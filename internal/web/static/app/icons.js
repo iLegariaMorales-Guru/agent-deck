@@ -44,6 +44,10 @@ export const ICONS = {
   term:    'M4 4h16v16H4z M8 9l3 3-3 3 M13 15h4',
   // edit (pencil) — used by Sidebar SessionItem to open EditSessionDialog.
   edit:    'M12 20h9 M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z',
+  // folder — CreateSessionDialog's working-dir folder browser (#1706-adjacent
+  // follow-up: browsers never expose an absolute path from a native picker,
+  // so this opens an in-app filesystem browser instead).
+  folder:  'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z',
 }
 
 export function Dot({ status, size = 7 }) {

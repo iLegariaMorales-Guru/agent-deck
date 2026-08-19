@@ -8,7 +8,7 @@
 // internal/web/api_types.go's CreateSessionRequest for the wire shape this
 // builds.
 import { html } from 'htm/preact'
-import { useState } from 'preact/hooks'
+import { useState, useEffect } from 'preact/hooks'
 import {
   createSessionDialogSignal, mutationsEnabledSignal,
   toolFilterFallbackSignal, pickerToolsSignal,
@@ -133,6 +133,110 @@ function recentProjectPaths() {
   return [...byPath.values()].sort((a, b) => (a.stamp < b.stamp ? 1 : a.stamp > b.stamp ? -1 : 0))
 }
 
+// FolderBrowser is a nested modal that walks the local filesystem via
+// GET /api/fs/browse — the practical stand-in for a native Finder picker.
+// Browsers deliberately never hand a page the absolute path of a folder
+// chosen through a native <input webkitdirectory> or the File System Access
+// API, so "browse for a folder" on the web means either that (server lists
+// what's on disk; the web UI here only ever serves 127.0.0.1 or an
+// explicitly-tokened host, so this is the same filesystem a real Finder
+// window on this machine would show) or typing the path — this adds the
+// former without removing the latter.
+function FolderBrowser({ start, onPick, onClose }) {
+  const [path, setPath] = useState('')
+  const [parent, setParent] = useState('')
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  function load(p) {
+    setLoading(true)
+    setError(null)
+    apiFetch('GET', '/api/fs/browse' + (p ? '?path=' + encodeURIComponent(p) : ''))
+      .then(resp => {
+        setPath(resp.path)
+        setParent(resp.parent || '')
+        setEntries(resp.entries || [])
+      })
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load(start) }, []) // eslint-disable-line
+
+  // Breadcrumb segments: clicking one jumps straight there instead of
+  // clicking "up" repeatedly.
+  const segments = []
+  if (path) {
+    const parts = path.split('/').filter(Boolean)
+    let acc = ''
+    for (const part of parts) {
+      acc += '/' + part
+      segments.push({ label: part, path: acc })
+    }
+  }
+
+  return html`
+    <div class="overlay" style="z-index: 61;" onClick=${e => { if (e.target === e.currentTarget) onClose() }}>
+      <div class="dialog" style="width: min(480px, 100%); max-height: min(560px, calc(100vh - 80px));" onClick=${e => e.stopPropagation()}>
+        <div class="dh">
+          <span class="kicker">FOLDER</span>
+          <div class="t">Choose a working directory</div>
+          <button type="button" class="icon-btn" onClick=${onClose} aria-label="Close">
+            <${Icon} d=${ICONS.x}/>
+          </button>
+        </div>
+        <div class="db" style="gap: 8px;">
+          <div style="font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); overflow-x: auto; white-space: nowrap; padding-bottom: 2px;">
+            <span style="cursor: pointer;" onClick=${() => load('/')}>/</span>
+            ${segments.map((seg, i) => html`
+              <span key=${seg.path}>
+                <span style="color: var(--muted-2);"> / </span>
+                <span style=${i === segments.length - 1 ? 'color: var(--text-hi);' : 'cursor: pointer;'}
+                      onClick=${() => i !== segments.length - 1 && load(seg.path)}>${seg.label}</span>
+              </span>
+            `)}
+          </div>
+
+          ${error && html`
+            <div style="font-family: var(--mono); font-size: 11.5px; color: var(--tn-red); padding: 8px 10px;
+                        border: 1px solid rgba(247,118,142,0.3); border-radius: 4px; background: rgba(247,118,142,0.06);">
+              ${error}
+            </div>
+          `}
+
+          <div style="flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); min-height: 220px;">
+            ${loading ? html`
+              <div style="padding: 14px; color: var(--muted); font-size: 12.5px;">Loading…</div>
+            ` : html`
+              ${parent && html`
+                <div class="cm-row" style="border-radius: 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;" onClick=${() => load(parent)}>
+                  <span class="cm-path">.. (up)</span>
+                </div>
+              `}
+              ${entries.length === 0 && !parent && html`
+                <div style="padding: 14px; color: var(--muted); font-size: 12.5px;">No subfolders here.</div>
+              `}
+              ${entries.map(e => html`
+                <div key=${e.path} class="cm-row" style="border-radius: 0; display: flex; align-items: center; gap: 8px;" onClick=${() => load(e.path)}>
+                  <${Icon} d=${ICONS.folder} size=${13}/>
+                  <span class="cm-path" style="flex: 1;">${e.name}</span>
+                </div>
+              `)}
+            `}
+          </div>
+        </div>
+        <div class="df">
+          <button type="button" class="btn ghost" onClick=${onClose}>Cancel</button>
+          <button type="button" class="btn primary" disabled=${!path || loading} onClick=${() => onPick(path)}>
+            Use this folder
+          </button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
 export function CreateSessionDialog() {
   const [title, setTitle] = useState('')
   const [groupPath, setGroupPath] = useState('')
@@ -142,6 +246,7 @@ export function CreateSessionDialog() {
   const [reasoningEffort, setReasoningEffort] = useState('')
   const [path, setPath] = useState('')
   const [pathMenuOpen, setPathMenuOpen] = useState(false)
+  const [browserOpen, setBrowserOpen] = useState(false)
   const [worktreeEnabled, setWorktreeEnabled] = useState(false)
   const [branch, setBranch] = useState('')
   const [branchTouched, setBranchTouched] = useState(false)
@@ -290,7 +395,12 @@ export function CreateSessionDialog() {
                      onInput=${e => { setPath(e.target.value); setPathMenuOpen(true) }}
                      onFocus=${() => setPathMenuOpen(true)}
                      onBlur=${() => setTimeout(() => setPathMenuOpen(false), 120)}
-                     placeholder="/absolute/path/to/project"/>
+                     placeholder="/absolute/path/to/project" style="padding-right: 58px;"/>
+              <button type="button" class="combo-chev" aria-label="Browse folders"
+                      style="right: 30px;"
+                      onClick=${() => setBrowserOpen(true)}>
+                <${Icon} d=${ICONS.folder} size=${13}/>
+              </button>
               ${allPaths.length > 0 && html`
                 <button type="button" class="combo-chev" aria-label="Show recent paths"
                         onClick=${() => setPathMenuOpen(v => !v)}>▾</button>
@@ -308,6 +418,11 @@ export function CreateSessionDialog() {
               </div>
             `}
           </div>
+
+          ${browserOpen && html`<${FolderBrowser}
+            start=${path}
+            onPick=${p => { pickPath(p); setBrowserOpen(false) }}
+            onClose=${() => setBrowserOpen(false)}/>`}
 
           <div class="field">
             <label>TOOL</label>
