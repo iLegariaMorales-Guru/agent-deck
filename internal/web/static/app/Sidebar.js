@@ -118,7 +118,7 @@ function healthBadge(s) {
     }
   }
   const issues = []
-  if (h.uncommittedChanges) issues.push('uncommitted changes')
+  if (h.uncommittedChanges) issues.push('uncommitted changes to tracked files')
   if (h.upstreamGone) issues.push('remote branch deleted (PR merged?)')
   if (h.behind > 0) issues.push(`${h.behind} behind base`)
   if (h.ahead > 0) issues.push(`${h.ahead} ahead of base`)

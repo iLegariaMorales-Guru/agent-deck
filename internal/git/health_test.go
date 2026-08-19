@@ -53,13 +53,41 @@ func TestCheckWorktreeHealth_UncommittedChanges(t *testing.T) {
 	if err := CreateWorktree(repo, worktreePath, "feature-dirty"); err != nil {
 		t.Fatalf("CreateWorktree: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(worktreePath, "scratch.txt"), []byte("wip"), 0o644); err != nil {
-		t.Fatalf("write scratch file: %v", err)
+	// Modify a TRACKED file (README.md, committed by createTestRepo) without
+	// committing — this is the real signal UncommittedChanges is meant to
+	// catch.
+	if err := os.WriteFile(filepath.Join(worktreePath, "README.md"), []byte("changed"), 0o644); err != nil {
+		t.Fatalf("modify tracked file: %v", err)
 	}
 
 	h := CheckWorktreeHealth(worktreePath, "feature-dirty", true)
 	if !h.UncommittedChanges {
 		t.Errorf("UncommittedChanges = false, want true")
+	}
+}
+
+// TestCheckWorktreeHealth_UntrackedFilesIgnored is the regression test for a
+// real false-positive hit live: a repo often has untracked scratch/local
+// files that are never meant to be committed (and aren't gitignored
+// either). Counting those made the badge permanently "dirty" even right
+// after a commit — this pins that untracked-only changes must NOT flip
+// UncommittedChanges.
+func TestCheckWorktreeHealth_UntrackedFilesIgnored(t *testing.T) {
+	repo := t.TempDir()
+	createTestRepo(t, repo)
+	createBranch(t, repo, "feature-untracked")
+
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	if err := CreateWorktree(repo, worktreePath, "feature-untracked"); err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(worktreePath, "scratch.txt"), []byte("wip"), 0o644); err != nil {
+		t.Fatalf("write untracked scratch file: %v", err)
+	}
+
+	h := CheckWorktreeHealth(worktreePath, "feature-untracked", true)
+	if h.UncommittedChanges {
+		t.Errorf("UncommittedChanges = true, want false (untracked-only files must not flag)")
 	}
 }
 

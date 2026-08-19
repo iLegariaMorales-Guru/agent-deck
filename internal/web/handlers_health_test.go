@@ -46,8 +46,11 @@ func TestSessionHealthBatch_DirtyWorktreeFlagged(t *testing.T) {
 	if err := git.CreateWorktree(repo, worktreePath, "feature-x"); err != nil {
 		t.Fatalf("CreateWorktree: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(worktreePath, "scratch.txt"), []byte("wip"), 0o644); err != nil {
-		t.Fatalf("write scratch file: %v", err)
+	// Modify a TRACKED file — an untracked scratch file must NOT trigger
+	// this (see TestCheckWorktreeHealth_UntrackedFilesIgnored in
+	// internal/git).
+	if err := os.WriteFile(filepath.Join(worktreePath, "README.md"), []byte("changed"), 0o644); err != nil {
+		t.Fatalf("modify tracked file: %v", err)
 	}
 
 	snapshot := &MenuSnapshot{Items: []MenuItem{
