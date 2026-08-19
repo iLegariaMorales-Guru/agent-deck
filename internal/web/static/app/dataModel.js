@@ -10,7 +10,7 @@
 import { computed } from '@preact/signals'
 import {
   sessionsSignal, sessionCostsSignal, sessionContextSignal,
-  sessionLiveModelSignal, sessionEstimatedCostSignal,
+  sessionLiveModelSignal, sessionEstimatedCostSignal, sessionHealthSignal,
 } from './state.js'
 
 // kind heuristic from session metadata (no API field today).
@@ -58,6 +58,10 @@ function projectSession(item) {
     // back to the TUI.
     worktree: !!(s.worktreeBranch && s.worktreeRepoRoot),
     worktreeBranch: s.worktreeBranch || '',
+    // health: hydrated separately via sessionHealthSignal (GET
+    // /api/sessions/health/batch) — null means "nothing flagged / not
+    // checked yet", never a false alarm. See Sidebar.js's health badges.
+    health: null,
     lastAccessedAt: s.lastAccessedAt || '',
     createdAt: s.createdAt || '',
     sandbox: false,     // not exposed by API
@@ -90,6 +94,7 @@ export const menuModelSignal = computed(() => {
   const contexts = sessionContextSignal.value || {}
   const liveModels = sessionLiveModelSignal.value || {}
   const estimatedCosts = sessionEstimatedCostSignal.value || {}
+  const healths = sessionHealthSignal.value || {}
   const groups = []
   const sessions = []
   for (const it of items) {
@@ -119,6 +124,7 @@ export const menuModelSignal = computed(() => {
         s.model = liveModels[s.id].model || ''
         s.modelVersion = liveModels[s.id].version || ''
       }
+      if (healths[s.id]) s.health = healths[s.id]
       sessions.push(s)
     }
   }

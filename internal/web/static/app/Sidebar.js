@@ -102,6 +102,29 @@ function sessionNeedsAttention(s) {
   return s.status === 'error' || (ctxPct != null && ctxPct >= 80)
 }
 
+// healthBadge turns s.health (GET /api/sessions/health/batch, cheap local
+// git checks — internal/git/health.go) into a single compact row badge.
+// Deliberately ONE badge, not one per flag: the sidebar is narrow and a row
+// can have several issues at once, so the label picks the single most
+// actionable word and the tooltip carries the full detail. Returns null
+// when there's nothing to badge (health absent, or IsClean).
+function healthBadge(s) {
+  const h = s.health
+  if (!h) return null
+  if (h.worktreeMissing) {
+    return {
+      cls: 'err', text: 'worktree gone',
+      title: 'Worktree directory no longer exists on disk — recreate it or point the session at a new path before starting.',
+    }
+  }
+  const issues = []
+  if (h.uncommittedChanges) issues.push('uncommitted changes to tracked files')
+  if (h.upstreamGone) issues.push('remote branch deleted (PR merged?)')
+  if (issues.length === 0) return null
+  const text = h.upstreamGone ? 'merged?' : 'uncommitted'
+  return { cls: 'warn', text, title: issues.join(' · ') }
+}
+
 // shortModelLabel compacts "Claude Opus" + "4.6" into "Opus 4.6" for the
 // row chip — the sidebar is ~280px wide, and the tool avatar already says
 // "this is Claude", so the repeated word there just steals room from the
@@ -138,6 +161,10 @@ function SessionItem({ s, sel, onSelect, showCols }) {
   const metaBits = []
   if (showCols.branch && s.branch && s.branch !== '—') {
     metaBits.push(html`<span class="branch">⌟ ${s.branch}</span>`)
+  }
+  const health = healthBadge(s)
+  if (health) {
+    metaBits.push(html`<span class=${`att-count ${health.cls}`} title=${health.title}>${health.text}</span>`)
   }
   if (showCols.lastSeen) {
     metaBits.push(html`<span>${s.status === 'running' ? 'active now' : formatRelativeTime(s.lastAccessedAt)}</span>`)
