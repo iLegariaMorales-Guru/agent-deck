@@ -280,6 +280,8 @@ func NewServer(cfg Config) *Server {
 	mux.HandleFunc("/api/costs/batch", s.handleCostsBatch)
 	mux.HandleFunc("/api/costs/stream", s.handleCostsStream)
 
+	mux.HandleFunc("/api/analytics/context/batch", s.handleContextBatch)
+
 	mux.HandleFunc("/api/system/stats", s.handleSystemStats)
 
 	mux.HandleFunc("/api/skills", s.handleSkillsCatalog)

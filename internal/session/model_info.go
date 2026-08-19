@@ -107,14 +107,28 @@ func splitProviderModelID(modelID string) (provider, base string) {
 
 func parseClaudeModel(provider, base string) (model, version string) {
 	parts := strings.Split(base, "-")
-	if len(parts) < 4 {
+	if len(parts) < 3 {
 		return withProvider(provider, base), ""
 	}
 
 	model = withProvider(provider, "Claude "+titleWords(parts[1]))
-	version = parts[2] + "." + parts[3]
-	if len(parts) >= 5 && parts[4] != "" {
-		version += " " + parts[4]
+
+	major := parts[2]
+	rest := parts[3:]
+
+	// The Claude 5 family dropped the minor version entirely (IDs are
+	// "claude-opus-5", "claude-sonnet-5" — just claude-<family>-<major>),
+	// unlike 4.x's "claude-<family>-4-<minor>[-date]". An 8-digit segment
+	// right after the major version is a release-date suffix, not a minor
+	// version, so it's the tell for "there is no minor here".
+	if len(rest) > 0 && len(rest[0]) != 8 {
+		version = major + "." + rest[0]
+		rest = rest[1:]
+	} else {
+		version = major
+	}
+	if len(rest) > 0 && rest[0] != "" {
+		version += " " + rest[0]
 	}
 	return model, version
 }

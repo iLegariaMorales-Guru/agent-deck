@@ -7455,6 +7455,19 @@ func (i *Instance) GetJSONLPath() string {
 	return resolveClaudeTranscriptPath(GetClaudeConfigDir(), i.ProjectPath, i.ClaudeSessionID)
 }
 
+// ResolveClaudeTranscriptPath is the exported form of the same lookup
+// GetJSONLPath does for a live *Instance, for callers that only have a
+// project path + Claude session id (e.g. the web package's analytics batch
+// endpoint, which works off the MenuSession DTO rather than an *Instance).
+// Callers are responsible for their own "is this session remote" check
+// (see TranscriptIsResolvableLocally) since a DTO carries no SSH state here.
+func ResolveClaudeTranscriptPath(projectPath, claudeSessionID string) string {
+	if claudeSessionID == "" {
+		return ""
+	}
+	return resolveClaudeTranscriptPath(GetClaudeConfigDir(), projectPath, claudeSessionID)
+}
+
 // getClaudeLastResponse extracts the last assistant message from Claude's JSONL file
 func (i *Instance) getClaudeLastResponse() (*ResponseOutput, error) {
 	// Require stored session ID - no fallback to file scanning

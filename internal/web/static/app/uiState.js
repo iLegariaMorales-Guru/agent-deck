@@ -57,8 +57,15 @@ export const statusFiltersSignal = signal([])
 export const mobileTabSignal = signal('fleet')
 
 // Sidebar column show/hide menu state.
+// `branch` and `lastSeen` default to true now that the backend actually
+// resolves branch (see MenuSession.Branch, session_data_service.go) and the
+// showcase treatment (branch + time + cost on every row) is the point of
+// this redesign — hiding them by default would just recreate the old dense
+// list. cost/context aren't listed here at all: they ride the row
+// unconditionally whenever data is available (see Sidebar.js SessionItem),
+// same as the status dot.
 export const showColsSignal = signal(loadJSON('agentdeck.showCols', {
-  tool: true, cost: true, branch: false, attach: false, sandbox: false, lastSeen: false,
+  tool: true, cost: true, branch: true, attach: false, sandbox: false, lastSeen: true,
 }))
 persist(showColsSignal, 'agentdeck.showCols')
 

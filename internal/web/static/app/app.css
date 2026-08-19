@@ -147,12 +147,32 @@ body[data-rail="hidden"] .rightrail { display: none; }
 .conn-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--status-running); box-shadow: 0 0 6px var(--status-running); }
 
 /* ---------- sidebar ---------- */
-.sidebar { background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+.sidebar { position: relative; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+.sidebar-resizer {
+  position: absolute; top: 0; right: -3px; width: 6px; height: 100%;
+  cursor: col-resize; z-index: 5; background: transparent;
+}
+.sidebar-resizer:hover, .sidebar-resizer:active { background: var(--accent-soft); }
 .side-head { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .side-head .label { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; color: var(--muted); }
 .side-head .count { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); }
 .side-head .spacer { flex: 1; }
 .side-head button { margin: 0; }
+
+.side-stats {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 12px 10px;
+  font-family: var(--mono); font-size: 11px;
+}
+.side-stats .ss-cost { color: var(--tn-lime); font-variant-numeric: tabular-nums; }
+.side-stats .ss-needs {
+  color: var(--tn-yellow);
+  display: flex; align-items: center; gap: 5px;
+}
+.side-stats .ss-needs::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--tn-yellow); box-shadow: 0 0 6px rgba(224,175,104,0.7);
+}
 
 .side-filter {
   padding: 8px 12px; border-bottom: 1px solid var(--border);
@@ -171,49 +191,90 @@ body[data-rail="hidden"] .rightrail { display: none; }
 }
 .side-chip.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 
-.side-list { flex: 1; overflow: auto; padding: 6px 0 10px; }
+.side-list { flex: 1; overflow: auto; padding: 10px 8px 16px; }
 .side-group-head {
   display: flex; align-items: center; gap: 6px;
-  padding: 6px 12px;
-  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em;
+  padding: 7px 8px 5px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em;
   color: var(--muted); cursor: pointer; user-select: none;
   text-transform: uppercase;
 }
 .side-group-head:hover { color: var(--text); }
-.side-group-head .chev { font-size: 10px; width: 10px; }
-.side-group-head .name { flex: 1; }
-.side-group-head .badge { color: var(--muted); }
+.side-group-head .chev { font-size: 9px; width: 10px; }
+.side-group-head .name { flex: 1; color: var(--tn-fg); font-weight: 600; font-size: 12px; text-transform: none; }
+.side-group-head .badge { color: var(--muted-2); }
+.side-group-head .g-stats { display: flex; align-items: center; gap: 8px; margin-left: auto; text-transform: none; letter-spacing: 0; }
+.side-group-head .g-waiting { color: var(--tn-yellow); }
+.side-group-head .g-cost { color: var(--tn-green); font-variant-numeric: tabular-nums; }
 .side-group-head.conductor .name { color: var(--tn-purple); }
 .side-group-head.watcher .name { color: var(--tn-cyan); }
 
 .sess {
   position: relative;
   display: grid;
-  grid-template-columns: 14px 1fr auto;
-  align-items: center; gap: 8px;
-  padding: 5px 12px 5px 16px;
+  grid-template-columns: 26px 1fr;
+  align-items: flex-start; gap: 10px;
+  margin: 2px 0;
+  padding: 9px 10px 9px 12px;
+  border-radius: 7px;
   min-height: var(--density-row);
   cursor: pointer; user-select: none;
-  border-left: 2px solid transparent;
+  /* Status accent by default (STATUS_ACCENT in Sidebar.js sets --row-accent
+     per row); selection below overrides it with the plain accent color, on
+     the theory that "this is the row I'm looking at" always wins visually
+     over "this row needs attention". */
+  border-left: 3px solid var(--row-accent, transparent);
+  background: var(--card);
   color: var(--text);
 }
-.sess:hover { background: rgba(255,255,255,0.02); }
+.sess:hover { background: var(--card-hi); }
 .sess.sel {
-  background: var(--accent-soft);
+  background: var(--card-hi);
   border-left-color: var(--accent);
   color: var(--text-hi);
 }
 .sess .sig {
   font-family: var(--mono); font-size: 11px; line-height: 1;
-  color: var(--muted); width: 14px; text-align: center;
+  color: var(--muted); width: 26px; text-align: center;
+  margin-top: 2px;
+}
+.sess .avatar {
+  width: 26px; height: 26px; border-radius: 7px;
+  display: grid; place-items: center;
+  font-family: var(--mono); font-weight: 700; font-size: 11px;
+  color: #0b0d14; background: var(--avatar-color, var(--muted-2));
+  flex: 0 0 auto; margin-top: 1px;
 }
 .sess.sel .sig { color: var(--accent); }
 .sess.conductor .sig { color: var(--tn-purple); }
 .sess.watcher .sig   { color: var(--tn-cyan); }
-.sess .titleline {
+
+.sess .card-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+.sess .card-top {
   display: flex; align-items: center; gap: 6px; min-width: 0;
 }
-.sess .tt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.sess .tt {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12.5px; font-weight: 500; color: var(--tn-fg-hi);
+}
+.sess .tag {
+  flex: 0 0 auto;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--muted); padding: 1px 5px;
+  border: 1px solid var(--border); border-radius: 3px;
+}
+.sess .model-chip {
+  flex: 0 0 auto; font-family: var(--mono); font-size: 10px;
+  color: var(--tn-blue); background: rgba(122,162,247,0.12);
+  border-radius: 4px; padding: 1px 5px; white-space: nowrap;
+}
+.sess .attn-pill {
+  flex: 0 0 auto; font-family: var(--mono); font-size: 9.5px;
+  letter-spacing: 0.03em; text-transform: uppercase;
+  color: var(--tn-red); background: rgba(247,118,142,0.14);
+  border-radius: 4px; padding: 1px 5px; white-space: nowrap;
+}
 /* Status dots. Scoped to both the sidebar (.sess) and the archived pane (.sr):
    .sr rows previously matched no .dot rule at all, so their dot rendered as an
    unstyled square-less span. Every session.Status value needs a rule here — an
@@ -230,45 +291,50 @@ body[data-rail="hidden"] .rightrail { display: none; }
 .sess .dot.starting, .sr .dot.starting { background: var(--status-start); animation: pulse 1.2s ease-in-out infinite; }
 .sess .dot.queued,  .sr .dot.queued  { background: var(--status-idle); opacity: 0.6; }
 
-.sess .meta { display: flex; align-items: center; gap: 6px; }
-.sess .tag {
-  font-family: var(--mono); font-size: 10px;
-  color: var(--muted); padding: 1px 5px;
-  border: 1px solid var(--border); border-radius: 3px;
-}
-.sess .cost {
-  font-family: var(--mono); font-size: 10.5px;
-  color: var(--tn-green);
-}
-.sess .subline {
-  grid-column: 2 / -1;
+/* card-meta: branch · time · cost on one line, same shape as the mockup's
+   .card-meta — replaced the old two-line meta/subline split. */
+.sess .card-meta {
+  display: flex; align-items: center; gap: 7px;
   font-family: var(--mono); font-size: 10.5px; color: var(--muted);
-  display: flex; gap: 8px; overflow: hidden; white-space: nowrap; flex-wrap: nowrap;
+  overflow: hidden; white-space: nowrap; min-width: 0;
+}
+.sess .card-meta .sep { flex: 0 0 auto; color: #414868; }
+.sess .card-meta .branch {
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  color: var(--tn-lime);
+}
+.sess .card-meta .cost { flex: 0 0 auto; color: var(--muted-2); }
+.sess .card-meta .att-count {
+  flex: 0 0 auto; padding: 0 5px; border-radius: 2px;
+  background: rgba(122,162,247,0.08); color: var(--tn-blue);
+  font-size: 10px;
+}
+.sess .card-meta .att-count.skill { background: rgba(187,154,247,0.10); color: var(--tn-purple); }
+.sess .card-meta .att-count.warn  { background: rgba(224,175,104,0.14); color: var(--tn-yellow); }
+
+.sess .ctx-row {
+  display: flex; align-items: center; gap: 6px;
   min-width: 0;
 }
-.sess .subline > span { flex: 0 0 auto; }
-.sess .subline .trunc { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.sess .subline .att-count {
-  padding: 0 5px; border-radius: 2px;
-  background: rgba(122,162,247,0.08); color: var(--tn-blue);
-  font-size: 10px;
+.sess .ctx-bar {
+  flex: 1; height: 3px; border-radius: 2px; min-width: 0;
+  background: var(--border); overflow: hidden;
 }
-.sess .subline .att-count.skill { background: rgba(187,154,247,0.10); color: var(--tn-purple); }
-.sess .subline .att-count.warn  { background: rgba(224,175,104,0.14); color: var(--tn-yellow); }
-.sess .subline .b { color: var(--text-dim); }
-.sess .subline .atts { display: inline-flex; gap: 4px; }
-.sess .subline .att {
-  padding: 0 5px; border-radius: 2px;
-  background: rgba(122,162,247,0.08); color: var(--tn-blue);
-  font-size: 10px;
+.sess .ctx-bar > span {
+  display: block; height: 100%; border-radius: 2px;
+  background: var(--ctx-color, var(--status-running));
 }
-.sess .subline .att.skill { background: rgba(187,154,247,0.10); color: var(--tn-purple); }
-.sess .subline .att.warn { background: rgba(224,175,104,0.14); color: var(--tn-yellow); }
+.sess .ctx-pct {
+  flex: 0 0 auto; width: 28px; text-align: right;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ctx-color, var(--muted));
+  font-variant-numeric: tabular-nums;
+}
 
 .sess .actions {
-  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-  display: none; gap: 1px; background: var(--panel-2); border-radius: 4px;
-  padding: 2px; border: 1px solid var(--border);
+  position: absolute; right: 8px; top: 9px;
+  display: none; gap: 3px; background: var(--card); border-radius: 6px;
+  padding: 2px; box-shadow: 0 4px 14px -4px rgba(0,0,0,0.5);
   /* The hover overlay is absolutely positioned over the row. As more action
      buttons are added (Edit landed alongside Start/Restart/Fork/Delete) the bar
      grows leftward and can cover the row's hit-test centre, swallowing the
@@ -279,11 +345,13 @@ body[data-rail="hidden"] .rightrail { display: none; }
 }
 .sess:hover .actions { display: flex; }
 .sess .actions .mini {
-  width: 22px; height: 22px; display: grid; place-items: center;
-  border: 0; background: transparent; color: var(--text-dim); border-radius: 3px; cursor: pointer;
+  width: 20px; height: 20px; display: grid; place-items: center;
+  border: 0; background: transparent; color: var(--text-dim);
+  border-radius: 4px; font-size: 11px; cursor: pointer;
   pointer-events: auto;
 }
-.sess .actions .mini:hover { background: var(--card); color: var(--text); }
+.sess .actions .mini:hover { background: var(--card-hi); color: var(--text-hi); }
+.sess .actions .mini:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
 .sess .actions .mini.danger:hover { color: var(--tn-red); }
 .sess .actions .mini.good:hover   { color: var(--tn-green); }
 .sess .actions .mini.fork:hover   { color: var(--tn-purple); }
@@ -901,24 +969,6 @@ body[data-rail="hidden"] .rightrail { display: none; }
   padding: 6px 8px; cursor: pointer; text-align: right;
   border-top: 1px solid var(--border); margin-top: 4px;
 }
-
-/* ==================== ROW DETAIL DROPDOWN ==================== */
-.sess .row-chev {
-  background: transparent; border: 0; color: var(--muted); cursor: pointer;
-  font-size: 10px; padding: 2px 4px;
-}
-.sess .row-chev:hover { color: var(--text); }
-.sess.exp { background: var(--card); }
-.row-detail {
-  grid-column: 1 / -1;
-  margin-top: 6px; padding: 8px 8px 6px;
-  border-top: 1px dashed var(--border);
-  display: flex; flex-direction: column; gap: 4px;
-}
-.row-detail .rd-row { display: grid; grid-template-columns: 60px 1fr; gap: 8px; font-family: var(--mono); font-size: 10.5px; }
-.row-detail .rd-k { color: var(--muted); }
-.row-detail .rd-v { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-detail .rd-v.ok { color: var(--tn-green); }
 
 /* ==================== MOBILE BOTTOM TABS ==================== */
 .mob-tabs { display: none; }

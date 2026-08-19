@@ -71,6 +71,17 @@ type MenuSession struct {
 	// drift. The web MCP pane reads this instead of guessing from the name.
 	MCPSupported bool           `json:"mcpSupported"`
 	Status       session.Status `json:"status"`
+	// Branch is the project's current git branch — WorktreeBranch when this
+	// session runs in a worktree, otherwise resolved from ProjectPath via a
+	// short-TTL cache (see branch_cache.go). Empty when the project isn't a
+	// git repo or the lookup failed; the sidebar renders that as "—".
+	Branch string `json:"branch,omitempty"`
+	// ContextPercent is the session's context-window usage, 0-100. Populated
+	// here only for tools whose analytics are already in memory (Gemini);
+	// Claude sessions require parsing a JSONL transcript, which is too
+	// costly to do on every snapshot build, so the client fetches those via
+	// GET/POST /api/analytics/context/batch instead (handlers_analytics.go).
+	ContextPercent float64 `json:"contextPercent,omitempty"`
 	// Substate is the additive Honest-Status-v2 refinement of Status
 	// (e.g. "model-unavailable", "auth-401", "idle-at-empty-prompt"). It
 	// explains WHY a session is in its coarse status so consumers like the
@@ -298,6 +309,16 @@ func toMenuSession(inst *session.Instance) *MenuSession {
 	}
 	modelInfo := inst.LaunchModelInfo()
 
+	branch := inst.WorktreeBranch
+	if branch == "" {
+		branch = sharedBranchCache.resolve(inst.ProjectPath)
+	}
+
+	var contextPercent float64
+	if inst.GeminiAnalytics != nil {
+		contextPercent = inst.GeminiAnalytics.ContextPercent()
+	}
+
 	return &MenuSession{
 		ID:                 inst.ID,
 		Title:              inst.Title,
@@ -308,6 +329,8 @@ func toMenuSession(inst *session.Instance) *MenuSession {
 		CanFork:            inst.CanFork(),
 		MCPSupported:       session.ToolSupportsMCPManager(inst.GetToolThreadSafe()),
 		Status:             inst.GetStatusThreadSafe(),
+		Branch:             branch,
+		ContextPercent:     contextPercent,
 		Substate:           string(inst.CachedSubstate()),
 		GroupPath:          inst.GroupPath,
 		ProjectPath:        inst.ProjectPath,
