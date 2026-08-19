@@ -60,6 +60,14 @@ func TestSessionAnalytics_ContextPercent_OpusModel(t *testing.T) {
 }
 
 func TestContextWindowForModel(t *testing.T) {
+	// Claude 5 family (opus-5/sonnet-5/fable-5, dateless 3-part IDs): 1M.
+	// Regression for a real bug report: a Sonnet 5 session's own /context
+	// said 7% while the sidebar (falling through to the 200k default below)
+	// said 32% for the same transcript.
+	assert.Equal(t, 1_000_000, contextWindowForModel("claude-sonnet-5"))
+	assert.Equal(t, 1_000_000, contextWindowForModel("claude-opus-5"))
+	assert.Equal(t, 1_000_000, contextWindowForModel("claude-fable-5"))
+	assert.Equal(t, 1_000_000, contextWindowForModel("claude-sonnet-5-20260615"))
 	// 4.8 models: 1M (must match before 4.x fallback)
 	assert.Equal(t, 1_000_000, contextWindowForModel("claude-opus-4-8"))
 	assert.Equal(t, 1_000_000, contextWindowForModel("claude-opus-4-8-20260801"))
