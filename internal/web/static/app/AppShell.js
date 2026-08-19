@@ -34,7 +34,7 @@ import {
   hiddenToolsSignal, pickerToolsSignal,
   trustedDomainsSignal, confirmLinkOpenSignal,
   sessionCostsSignal, sessionContextSignal, sessionLiveModelSignal,
-  sessionEstimatedCostSignal,
+  sessionEstimatedCostSignal, sessionHealthSignal,
   sidebarWidthSignal,
 } from './state.js'
 import {
@@ -225,6 +225,9 @@ export function AppShell() {
           if (data.liveModel) sessionLiveModelSignal.value = data.liveModel
           if (data.estimatedCost) sessionEstimatedCostSignal.value = data.estimatedCost
         })
+        .catch(() => {})
+      apiFetch('GET', '/api/sessions/health/batch' + q)
+        .then(data => { if (!cancelled && data?.health) sessionHealthSignal.value = data.health })
         .catch(() => {})
     }
     poll()

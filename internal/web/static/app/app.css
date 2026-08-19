@@ -311,6 +311,7 @@ body[data-rail="hidden"] .rightrail { display: none; }
 }
 .sess .card-meta .att-count.skill { background: rgba(187,154,247,0.10); color: var(--tn-purple); }
 .sess .card-meta .att-count.warn  { background: rgba(224,175,104,0.14); color: var(--tn-yellow); }
+.sess .card-meta .att-count.err   { background: rgba(247,118,142,0.14); color: var(--tn-red); }
 
 .sess .ctx-row {
   display: flex; align-items: center; gap: 6px;

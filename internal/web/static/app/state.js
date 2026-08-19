@@ -51,6 +51,14 @@ export const sessionLiveModelSignal = signal({})
 // (sessionCostsSignal) always wins when it has one. See dataModel.js.
 export const sessionEstimatedCostSignal = signal({})
 
+// Per-session health flags from GET /api/sessions/health/batch (map of
+// sessionId -> {worktreeMissing, uncommittedChanges, ahead, behind,
+// upstreamGone}) — cheap local git checks (internal/git/health.go) that
+// catch a session's worktree/branch trouble before it turns into a hard
+// failure trying to create/attach/finish. Sessions with nothing to badge
+// are simply absent from the map. See dataModel.js and Sidebar.js.
+export const sessionHealthSignal = signal({})
+
 // Sidebar open state (for tablet/phone responsive toggle)
 // LAYT-05: explicit localStorage value wins; otherwise default based on viewport
 // (open on tablet/desktop >= 768px, closed on phone < 768px). Prevents the
