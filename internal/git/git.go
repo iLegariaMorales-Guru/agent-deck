@@ -755,8 +755,30 @@ func RemoveWorktree(repoDir, worktreePath string, force bool) error {
 	return nil
 }
 
-// GetWorktreeForBranch returns the worktree path for a given branch, if any
+// GetWorktreeForBranch returns the worktree path for a given branch, if any.
+//
+// git's own worktree registry (.git/worktrees/<id>) survives a directory
+// simply being rm -rf'd out from under it — only `git worktree remove` (or
+// `prune`) clears the entry, so `worktree list` keeps reporting a branch as
+// "checked out at <path>" long after <path> is gone. A caller that trusts
+// that blindly (as this function used to) reuses a dead path: the create
+// flow skips `git worktree add` entirely (it thinks a worktree already
+// exists), the session gets built pointing at that path, and it fails only
+// later, opaquely, when tmux tries to start there
+// (internal/tmux/workdir_guard.go's "does not exist... was deleted or
+// renamed").
+//
+// Pruning runs unconditionally, before listing — not just when THIS
+// branch's own entry looks stale. A directory removed by hand can leave a
+// stale registration for a DIFFERENT branch sitting at the exact path
+// agent-deck is about to reuse (branch-name folders collide by design,
+// e.g. .claude/worktrees/<branch>), which would make the next `git
+// worktree add` at that path fail against the orphaned entry even though
+// this function correctly reported "no existing worktree" for the branch
+// actually being requested.
 func GetWorktreeForBranch(repoDir, branchName string) (string, error) {
+	pruneWorktrees(repoDir)
+
 	worktrees, err := ListWorktrees(repoDir)
 	if err != nil {
 		return "", err
@@ -769,6 +791,15 @@ func GetWorktreeForBranch(repoDir, branchName string) (string, error) {
 	}
 
 	return "", nil
+}
+
+// pruneWorktrees removes administrative entries for worktrees whose
+// directory no longer exists on disk. Best-effort: a failure here (e.g. a
+// concurrent git process holding the lock) just means the stale entry
+// lingers for the caller to hit again next time — never worth failing the
+// caller's own operation over.
+func pruneWorktrees(repoDir string) {
+	_ = exec.Command("git", "-C", repoDir, "worktree", "prune").Run()
 }
 
 // IsWorktree checks if the given directory is a git worktree (not the main repo)
