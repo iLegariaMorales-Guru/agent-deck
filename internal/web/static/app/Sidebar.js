@@ -7,11 +7,12 @@
 // Action handlers route through apiFetch; mutations gated by mutationsEnabledSignal.
 import { html } from 'htm/preact'
 import { useState, useMemo } from 'preact/hooks'
-import { Icon, ICONS, Dot, kindSigil } from './icons.js'
+import { Icon, ICONS, Dot, kindSigil, toolAvatar } from './icons.js'
 import { menuModelSignal } from './dataModel.js'
 import {
   selectedIdSignal, mutationsEnabledSignal, confirmDialogSignal,
   createSessionDialogSignal, editSessionDialogSignal,
+  sidebarWidthSignal, clampSidebarWidth,
 } from './state.js'
 import { statusFiltersSignal, showColsSignal, activeTabSignal } from './uiState.js'
 import { apiFetch } from './api.js'
@@ -80,47 +81,107 @@ function doAction(action, s) {
   }
 }
 
+// STATUS_ACCENT maps a session's status to the left-accent-bar token. Falls
+// back to idle for statuses without their own accent (stopped/starting/
+// queued) — the .dot already carries the finer distinction there.
+const STATUS_ACCENT = {
+  running: 'var(--status-running)',
+  waiting: 'var(--status-waiting)',
+  error:   'var(--status-error)',
+  starting: 'var(--status-start)',
+}
+
+// sessionContextPct / sessionNeedsAttention are shared between SessionItem
+// (per-row pill) and the fleet summary strip (top-of-sidebar "N need you"
+// count) so the two never drift on what "needs attention" means.
+function sessionContextPct(s) {
+  return typeof s.contextPercent === 'number' ? Math.min(100, s.contextPercent) : null
+}
+function sessionNeedsAttention(s) {
+  const ctxPct = sessionContextPct(s)
+  return s.status === 'error' || (ctxPct != null && ctxPct >= 80)
+}
+
+// shortModelLabel compacts "Claude Opus" + "4.6" into "Opus 4.6" for the
+// row chip — the sidebar is ~280px wide, and the tool avatar already says
+// "this is Claude", so the repeated word there just steals room from the
+// title. Falls back to the full model string for non-Claude tools, which
+// don't carry the same "<Tool> <Family>" shape.
+function shortModelLabel(s) {
+  if (!s.model) return ''
+  const short = s.model.replace(/^Claude\s+/i, '')
+  return s.modelVersion ? `${short} ${s.modelVersion}` : short
+}
+
 function SessionItem({ s, sel, onSelect, showCols }) {
-  const [exp, setExp] = useState(false)
   const mcpCount = (s.mcps || []).length
   const skillCount = (s.skills || []).length
-  const hasSubline =
-    (showCols.branch && s.branch && s.branch !== '—') ||
-    (showCols.attach && (mcpCount > 0 || skillCount > 0)) ||
-    (showCols.sandbox && (s.sandbox || s.worktree)) ||
-    showCols.lastSeen
+
+  const avatar = toolAvatar(s.tool)
+  const rowAccent = STATUS_ACCENT[s.status] || 'var(--status-idle)'
+
+  // ctxPct rides in on s.contextPercent — Gemini's arrives free on the menu
+  // snapshot, Claude's is hydrated separately (menuModelSignal merges
+  // sessionContextSignal; see dataModel.js). null means "no bar to draw"
+  // rather than a misleading 0%.
+  const ctxPct = sessionContextPct(s)
+  const ctxColor = ctxPct == null ? null
+    : ctxPct >= 80 ? 'var(--status-error)'
+    : ctxPct >= 60 ? 'var(--status-waiting)'
+    : 'var(--status-running)'
+  const needsAttention = sessionNeedsAttention(s)
+  const attentionLabel = s.status === 'error' ? (s.raw?.substate || 'error') : 'near limit'
+
+  // Single line of branch · time · cost · attachments, "·"-separated —
+  // built as a list and joined so a hidden/absent field never leaves a
+  // dangling separator behind it.
+  const metaBits = []
+  if (showCols.branch && s.branch && s.branch !== '—') {
+    metaBits.push(html`<span class="branch">⌟ ${s.branch}</span>`)
+  }
+  if (showCols.lastSeen) {
+    metaBits.push(html`<span>${s.status === 'running' ? 'active now' : formatRelativeTime(s.lastAccessedAt)}</span>`)
+  }
+  if (showCols.cost && s.cost > 0) {
+    const prefix = s.costEstimated ? '~$' : '$'
+    metaBits.push(html`<span class="cost" title=${s.costEstimated ? 'Estimated from the transcript — no cost-event ledger entry yet' : ''}>${prefix}${s.cost.toFixed(2)}</span>`)
+  }
+  if (showCols.attach && mcpCount > 0) {
+    metaBits.push(html`<span class="att-count">${mcpCount} mcp${mcpCount > 1 ? 's' : ''}</span>`)
+  }
+  if (showCols.attach && skillCount > 0) {
+    metaBits.push(html`<span class="att-count skill">${skillCount} skill${skillCount > 1 ? 's' : ''}</span>`)
+  }
+  if (showCols.sandbox && s.sandbox) {
+    metaBits.push(html`<span class="att-count warn">docker</span>`)
+  }
+  if (showCols.sandbox && s.worktree) {
+    metaBits.push(html`<span class="att-count">worktree</span>`)
+  }
+  const metaRow = metaBits.flatMap((bit, i) => i === 0 ? [bit] : [html`<span class="sep">·</span>`, bit])
+
   return html`
-    <div class=${`sess ${sel ? 'sel' : ''} ${s.kind} ${exp ? 'exp' : ''}`} onClick=${() => onSelect(s.id)}>
-      <span class="sig">${kindSigil(s.kind)}</span>
-      <div class="titleline">
-        <${Dot} status=${s.status}/>
-        <span class="tt">${s.title}</span>
-      </div>
-      <div class="meta">
-        ${showCols.tool && s.tool && html`<span class="tag">${s.tool}</span>`}
-        ${showCols.cost && s.cost > 0 && html`<span class="cost">$${s.cost.toFixed(2)}</span>`}
-        <button class="row-chev" title="Details" onClick=${e => { e.stopPropagation(); setExp(v => !v) }}>
-          ${exp ? '▾' : '▸'}
-        </button>
-      </div>
-      ${hasSubline && html`
-        <div class="subline">
-          ${showCols.branch && s.branch && s.branch !== '—' && html`<span class="trunc"><span class="b">git</span> ${s.branch}</span>`}
-          ${showCols.attach && mcpCount > 0 && html`<span class="att-count">${mcpCount} mcp${mcpCount > 1 ? 's' : ''}</span>`}
-          ${showCols.attach && skillCount > 0 && html`<span class="att-count skill">${skillCount} skill${skillCount > 1 ? 's' : ''}</span>`}
-          ${showCols.sandbox && s.sandbox && html`<span class="att-count warn">docker</span>`}
-          ${showCols.sandbox && s.worktree && html`<span class="att-count">worktree</span>`}
-          ${showCols.lastSeen && html`<span class="att-count" title="Last active">⏱ ${s.status === 'running' ? 'active now' : formatRelativeTime(s.lastAccessedAt)}</span>`}
+    <div class=${`sess ${sel ? 'sel' : ''} ${s.kind}`}
+         style=${{ '--row-accent': rowAccent }} onClick=${() => onSelect(s.id)}>
+      ${s.kind === 'agent'
+        ? html`<span class="avatar" style=${{ '--avatar-color': avatar.color }} title=${s.tool}>${avatar.glyph}</span>`
+        : html`<span class="sig">${kindSigil(s.kind)}</span>`}
+      <div class="card-body">
+        <div class="card-top">
+          <${Dot} status=${s.status} size=${6}/>
+          <span class="tt" title=${s.title}>${s.title}</span>
+          ${showCols.tool && s.tool && html`<span class="tag">${s.tool}</span>`}
+          ${s.model && html`<span class="model-chip" title=${s.model}>${shortModelLabel(s)}</span>`}
+          ${needsAttention && html`<span class="attn-pill">${attentionLabel}</span>`}
         </div>
-      `}
-      ${exp && html`
-        <div class="row-detail" onClick=${e => e.stopPropagation()}>
-          <div class="rd-row"><span class="rd-k">tool</span><span class="rd-v">${s.tool || '—'}</span></div>
-          ${s.branch && s.branch !== '—' && html`<div class="rd-row"><span class="rd-k">branch</span><span class="rd-v">${s.branch}</span></div>`}
-          ${s.path && html`<div class="rd-row"><span class="rd-k">path</span><span class="rd-v" title=${s.path}>${s.path}</span></div>`}
-          ${s.cost > 0 && html`<div class="rd-row"><span class="rd-k">cost</span><span class="rd-v ok">$${s.cost.toFixed(2)}</span></div>`}
-        </div>
-      `}
+        ${metaRow.length > 0 && html`<div class="card-meta">${metaRow}</div>`}
+        ${ctxPct != null && html`
+          <div class="ctx-row" title=${`Context window: ${Math.round(ctxPct)}%`}>
+            <div class="ctx-bar"><span style=${{ width: ctxPct + '%', '--ctx-color': ctxColor }}/></div>
+            <span class="ctx-pct" style=${{ '--ctx-color': ctxColor }}>${Math.round(ctxPct)}%</span>
+          </div>
+        `}
+      </div>
       <div class="actions" onClick=${e => e.stopPropagation()}>
         ${(s.status === 'running' || s.status === 'waiting')
           ? html`<button class="mini" title="Stop" data-testid="session-stop-btn" onClick=${() => doAction('stop', s)}><${Icon} d=${ICONS.stop} size=${12}/></button>`
@@ -133,6 +194,37 @@ function SessionItem({ s, sel, onSelect, showCols }) {
         <button class="mini danger" title="Delete" data-testid="session-delete-btn" onClick=${() => doAction('delete', s)}><${Icon} d=${ICONS.trash} size=${12}/></button>
       </div>
     </div>
+  `
+}
+
+// SidebarResizer drags --sidebar-w (AppShell.js sets it inline from
+// sidebarWidthSignal) between SIDEBAR_WIDTH_MIN/MAX. The signal and its
+// clamp already existed in state.js for this — nothing consumed it before,
+// so the sidebar was stuck at the 300px default no matter what a user
+// dragged. window-level listeners (not onPointerMove on the handle itself)
+// so the drag keeps tracking even if the cursor outruns the thin handle.
+function SidebarResizer() {
+  const onPointerDown = (e) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = sidebarWidthSignal.value
+    const onMove = (ev) => {
+      sidebarWidthSignal.value = clampSidebarWidth(startWidth + (ev.clientX - startX))
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      try { localStorage.setItem('sidebar-width', String(sidebarWidthSignal.value)) } catch (_) {
+        // localStorage may throw in incognito/privacy modes; width still
+        // applies for the rest of this session, just doesn't persist.
+      }
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+  return html`
+    <div class="sidebar-resizer" onPointerDown=${onPointerDown}
+         role="separator" aria-orientation="vertical" aria-label="Resize sidebar"/>
   `
 }
 
@@ -154,6 +246,13 @@ export function Sidebar() {
   }
 
   const totalVisible = useMemo(() => sessions.filter(matches).length, [sessions, filter, statusFilters])
+  // Fleet-wide summary strip (total spend + how many need you) — the
+  // sidebar-header equivalent of the mockup's "6 sessions · $12.47 today ·
+  // 1 needs you" line. Derived from `sessions`, not `matches`-filtered, so
+  // it always reflects the whole fleet regardless of the active filter.
+  const fleetCost = useMemo(() => sessions.reduce((sum, s) => sum + (s.cost || 0), 0), [sessions])
+  const fleetCostEstimated = useMemo(() => sessions.some(s => s.costEstimated), [sessions])
+  const fleetNeedsYou = useMemo(() => sessions.filter(sessionNeedsAttention).length, [sessions])
   const toggleStatus = (id) => {
     const cur = statusFiltersSignal.value
     statusFiltersSignal.value = cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id]
@@ -203,6 +302,12 @@ export function Sidebar() {
           </button>
         `}
       </div>
+      ${(fleetCost > 0 || fleetNeedsYou > 0) && html`
+        <div class="side-stats">
+          ${fleetCost > 0 && html`<span class="ss-cost">${fleetCostEstimated ? '~$' : '$'}${fleetCost.toFixed(2)} today</span>`}
+          ${fleetNeedsYou > 0 && html`<span class="ss-needs">${fleetNeedsYou} need${fleetNeedsYou > 1 ? '' : 's'} you</span>`}
+        </div>
+      `}
       <div class="side-filter">
         <input
           placeholder="/ filter"
@@ -225,12 +330,22 @@ export function Sidebar() {
           const members = (byGroup[g.path] || []).filter(matches)
           if (filter && members.length === 0) return null
           const open = expanded[g.path] !== false
+          // Rollup: total cost + how many are waiting on the user, computed
+          // from the same members array already built for rendering — no
+          // extra signal or backend round-trip needed.
+          const groupCost = members.reduce((sum, s) => sum + (s.cost || 0), 0)
+          const groupCostEstimated = members.some(s => s.costEstimated)
+          const waitingCount = members.filter(s => s.status === 'waiting').length
           return html`
             <div key=${g.path}>
               <div class=${`side-group-head ${g.kind || ''}`} data-testid=${`group-head-${g.path}`} onClick=${() => toggleGroup(g.path)}>
                 <span class="chev">${open ? '▾' : '▸'}</span>
                 <span class="name">${g.label}</span>
                 <span class="badge">(${members.length})</span>
+                <span class="g-stats">
+                  ${waitingCount > 0 && html`<span class="g-waiting">${waitingCount} waiting</span>`}
+                  ${groupCost > 0 && html`<span class="g-cost">${groupCostEstimated ? '~$' : '$'}${groupCost.toFixed(2)}</span>`}
+                </span>
               </div>
               ${open && members.map(s => html`
                 <${SessionItem} key=${s.id} s=${s} sel=${selected === s.id} onSelect=${onSelect} showCols=${showCols}/>
@@ -244,6 +359,7 @@ export function Sidebar() {
           </div>
         `}
       </div>
+      <${SidebarResizer}/>
     </div>
   `
 }

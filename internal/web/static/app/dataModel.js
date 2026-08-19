@@ -8,7 +8,10 @@
 // so the design renders without inventing data. Components that need richer
 // data (e.g. RightRail Usage card) fall back to "no data" placeholders.
 import { computed } from '@preact/signals'
-import { sessionsSignal, sessionCostsSignal } from './state.js'
+import {
+  sessionsSignal, sessionCostsSignal, sessionContextSignal,
+  sessionLiveModelSignal, sessionEstimatedCostSignal,
+} from './state.js'
 
 // kind heuristic from session metadata (no API field today).
 // `tool` is `claude|codex|gemini|shell|webhook|...`; treat anything not in
@@ -41,6 +44,10 @@ function projectSession(item) {
     branch: s.branch || '—',
     path: s.projectPath || '',
     cost: 0,            // hydrated separately via sessionCostsSignal
+    // contextPercent: Gemini's rides in on the snapshot itself (s.contextPercent,
+    // cheap — no file I/O). Claude's is hydrated separately below via
+    // sessionContextSignal, since it needs a JSONL parse. null means "no bar".
+    contextPercent: typeof s.contextPercent === 'number' && s.contextPercent > 0 ? s.contextPercent : null,
     tokens: 0,          // not exposed by API
     mcps: [],           // not exposed by API (TUI-only feature; pane shows stub)
     skills: [],         // not exposed by API (TUI-only feature; pane shows stub)
@@ -80,6 +87,9 @@ function projectGroup(item) {
 export const menuModelSignal = computed(() => {
   const items = sessionsSignal.value || []
   const costs = sessionCostsSignal.value || {}
+  const contexts = sessionContextSignal.value || {}
+  const liveModels = sessionLiveModelSignal.value || {}
+  const estimatedCosts = sessionEstimatedCostSignal.value || {}
   const groups = []
   const sessions = []
   for (const it of items) {
@@ -89,7 +99,26 @@ export const menuModelSignal = computed(() => {
     } else if (it.type === 'session') {
       const s = projectSession(it)
       const c = costs[s.id]
-      if (typeof c === 'number') s.cost = c
+      if (typeof c === 'number' && c > 0) {
+        s.cost = c
+      } else if (typeof estimatedCosts[s.id] === 'number') {
+        // No cost-ledger event for this session (hooks never wired up, or
+        // just no billed event yet) — fall back to the transcript-derived
+        // estimate so a plainly-used session doesn't read as free.
+        // costEstimated flags it for the sidebar to render as "~$X".
+        s.cost = estimatedCosts[s.id]
+        s.costEstimated = true
+      }
+      const ctx = contexts[s.id]
+      if (typeof ctx === 'number') s.contextPercent = ctx
+      // Backend only sends a liveModel entry for sessions that had no
+      // explicit launch model in the first place, but re-check here too —
+      // belt and suspenders against ever letting a detected model steal
+      // the chip from the one the user actually picked.
+      if (!s.model && liveModels[s.id]) {
+        s.model = liveModels[s.id].model || ''
+        s.modelVersion = liveModels[s.id].version || ''
+      }
       sessions.push(s)
     }
   }
