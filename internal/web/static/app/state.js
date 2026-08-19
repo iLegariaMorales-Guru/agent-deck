@@ -30,6 +30,27 @@ export const authTokenSignal = signal('')
 // Per-session costs from GET /api/costs/batch (map of sessionId -> costUSD)
 export const sessionCostsSignal = signal({})
 
+// Per-session context-window usage from GET /api/analytics/context/batch
+// (map of sessionId -> percent, 0-100). Only carries Claude sessions —
+// Gemini's percent already rides in on the menu snapshot itself (cheap,
+// no file I/O needed), see dataModel.js's projectSession.
+export const sessionContextSignal = signal({})
+
+// Per-session model detected from the Claude transcript itself (map of
+// sessionId -> {model, version}), from the same batch call above. Only
+// populated server-side for sessions launched with no explicit model
+// (MenuSession.Model empty, i.e. "Tool default") — otherwise the requested
+// model always wins. See dataModel.js's projectSession for the merge.
+export const sessionLiveModelSignal = signal({})
+
+// Per-session cost ESTIMATE from the same batch call, derived from the
+// Claude transcript's token usage (session.SessionAnalytics.CalculateCost —
+// the same figure the TUI's analytics panel shows). This is a fallback for
+// when cost-event hooks were never wired up for a profile, so a plainly-used
+// session doesn't just sit at "$0.00" — the real cost-ledger figure
+// (sessionCostsSignal) always wins when it has one. See dataModel.js.
+export const sessionEstimatedCostSignal = signal({})
+
 // Sidebar open state (for tablet/phone responsive toggle)
 // LAYT-05: explicit localStorage value wins; otherwise default based on viewport
 // (open on tablet/desktop >= 768px, closed on phone < 768px). Prevents the

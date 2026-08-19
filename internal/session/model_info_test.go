@@ -25,6 +25,23 @@ func TestParseModelID(t *testing.T) {
 			display: "Claude Haiku 4.5 20251001",
 		},
 		{
+			// Claude 5 family dropped the minor version: "claude-sonnet-5",
+			// not "claude-sonnet-5-0". Regression guard for the raw
+			// "claude-sonnet-5" fallback this used to produce.
+			name:    "claude 5 family, no minor version",
+			modelID: "claude-sonnet-5",
+			model:   "Claude Sonnet",
+			version: "5",
+			display: "Claude Sonnet 5",
+		},
+		{
+			name:    "claude 5 family with date suffix",
+			modelID: "claude-opus-5-20260315",
+			model:   "Claude Opus",
+			version: "5 20260315",
+			display: "Claude Opus 5 20260315",
+		},
+		{
 			name:    "opencode anthropic provider",
 			modelID: "anthropic/claude-opus-4-7",
 			model:   "Anthropic Claude Opus",

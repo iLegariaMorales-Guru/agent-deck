@@ -34,6 +34,26 @@ func (a *GeminiSessionAnalytics) TotalTokens() int {
 	return a.InputTokens + a.OutputTokens
 }
 
+// geminiContextWindow is the context window size assumed for Gemini
+// sessions. Mirrors the constant in ui/analytics_panel.go's
+// renderGeminiContextBar (Gemini 2.0 Flash's 1M window) — kept here too so
+// non-TUI consumers (the web sidebar) can compute the same percentage
+// without duplicating the model-window table analytics.go has for Claude.
+const geminiContextWindow = 1_000_000
+
+// ContextPercent returns the percentage of the context window used, based
+// on CurrentContextTokens. Capped at 100.
+func (a *GeminiSessionAnalytics) ContextPercent() float64 {
+	if a == nil {
+		return 0
+	}
+	pct := float64(a.CurrentContextTokens) / float64(geminiContextWindow) * 100
+	if pct > 100 {
+		pct = 100
+	}
+	return pct
+}
+
 // GeminiModelPricing holds pricing per million tokens
 type GeminiModelPricing struct {
 	Input  float64

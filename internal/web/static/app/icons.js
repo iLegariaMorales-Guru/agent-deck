@@ -59,3 +59,32 @@ export function kindSigil(k) {
   if (k === 'watcher')   return '◇'
   return '›'
 }
+
+// TOOL_AVATAR maps a session's `tool` to a compact monogram + tint for the
+// sidebar row avatar. Colors are drawn from the existing Tokyo Night palette
+// (design-tokens.css tn-* vars) — one per tool, not a new hue per feature —
+// so a fleet with a mixed tool set reads at a glance without adding colors
+// nothing else in the app uses.
+// Single letters, not two — claude/codex/cursor/copilot all start with "c",
+// so the letter is picked to disambiguate within the set rather than always
+// being the tool's own initial (codex -> X, cursor -> U, copilot -> P).
+const TOOL_AVATAR = {
+  claude:   { glyph: 'C', color: 'var(--tn-orange)' },
+  codex:    { glyph: 'X', color: 'var(--tn-blue)' },
+  gemini:   { glyph: 'G', color: 'var(--tn-purple)' },
+  cursor:   { glyph: 'U', color: 'var(--tn-cyan)' },
+  copilot:  { glyph: 'P', color: 'var(--tn-green)' },
+  deepseek: { glyph: 'D', color: 'var(--tn-lime)' },
+  opencode: { glyph: 'O', color: 'var(--tn-yellow)' },
+}
+
+// toolAvatar returns { glyph, color } for a session's tool badge. Tools
+// outside the known map (custom/user-defined tools) fall back to their own
+// first letter on a neutral tint, rather than a hardcoded "?" — new tools
+// land often enough here (see cmd/agent-deck/*_hooks_cmd.go) that a silent
+// fallback beats a growing if/else chain.
+export function toolAvatar(tool) {
+  const key = (tool || '').toLowerCase()
+  if (TOOL_AVATAR[key]) return TOOL_AVATAR[key]
+  return { glyph: key ? key[0].toUpperCase() : '?', color: 'var(--muted-2)' }
+}

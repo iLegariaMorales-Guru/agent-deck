@@ -33,6 +33,9 @@ import {
   toolFilterSignal, visibleToolsSignal, toolFilterFallbackSignal,
   hiddenToolsSignal, pickerToolsSignal,
   trustedDomainsSignal, confirmLinkOpenSignal,
+  sessionCostsSignal, sessionContextSignal, sessionLiveModelSignal,
+  sessionEstimatedCostSignal,
+  sidebarWidthSignal,
 } from './state.js'
 import {
   activeTabSignal, paletteOpenSignal, tweaksOpenSignal,
@@ -201,6 +204,34 @@ export function AppShell() {
     return () => { cancelled = true; clearInterval(id) }
   }, [])
 
+  // Poll per-session cost + context-window usage every 10s for the sidebar
+  // rows (cost bar, context bar). Both are batch endpoints keyed by the
+  // current visible session ids — read fresh from the signal on each tick
+  // rather than depending on it, so ids added/removed between polls are
+  // picked up without resubscribing the effect.
+  useEffect(() => {
+    let cancelled = false
+    const poll = () => {
+      const ids = (menuModelSignal.value?.sessions || []).map(s => s.id).filter(Boolean)
+      if (ids.length === 0) return
+      const q = '?ids=' + encodeURIComponent(ids.join(','))
+      apiFetch('GET', '/api/costs/batch' + q)
+        .then(data => { if (!cancelled && data?.costs) sessionCostsSignal.value = data.costs })
+        .catch(() => {})
+      apiFetch('GET', '/api/analytics/context/batch' + q)
+        .then(data => {
+          if (cancelled || !data) return
+          if (data.context) sessionContextSignal.value = data.context
+          if (data.liveModel) sessionLiveModelSignal.value = data.liveModel
+          if (data.estimatedCost) sessionEstimatedCostSignal.value = data.estimatedCost
+        })
+        .catch(() => {})
+    }
+    poll()
+    const id = setInterval(poll, 10000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [])
+
   // Global keyboard shortcuts — TUI parity, issue #780.
   // Top-10 bindings combined with the existing Web-only ones (Ctrl+K, ]).
   // Guard: any key that isn't a modal-bound modifier combo must NOT fire
@@ -337,7 +368,7 @@ export function AppShell() {
   }, [drawerOpen])
 
   return html`
-    <div id="app-root-grid" class="app">
+    <div id="app-root-grid" class="app" style=${{ '--sidebar-w': sidebarWidthSignal.value + 'px' }}>
       <${Topbar}/>
       <${Sidebar}/>
       <div class="main">
