@@ -15,7 +15,7 @@ import (
 // fakeMutator is a test double for SessionMutator that delegates to function fields.
 // If a function field is nil, the method returns an error indicating it is unconfigured.
 type fakeMutator struct {
-	createSessionFn    func(title, tool, projectPath, groupPath, modelID, reasoningEffort string) (string, error)
+	createSessionFn    func(req CreateSessionRequest) (string, error)
 	startSessionFn     func(id string) error
 	stopSessionFn      func(id string) error
 	restartSessionFn   func(id string) error
@@ -32,11 +32,11 @@ type fakeMutator struct {
 	finishWorktreeFn   func(id string, opts WorktreeFinishOptions) (WorktreeFinishResult, error)
 }
 
-func (f *fakeMutator) CreateSession(title, tool, projectPath, groupPath, modelID, reasoningEffort string) (string, error) {
+func (f *fakeMutator) CreateSession(req CreateSessionRequest) (string, error) {
 	if f.createSessionFn == nil {
 		return "", fmt.Errorf("createSession not configured")
 	}
-	return f.createSessionFn(title, tool, projectPath, groupPath, modelID, reasoningEffort)
+	return f.createSessionFn(req)
 }
 
 func (f *fakeMutator) StartSession(id string) error {
@@ -191,7 +191,7 @@ func TestSessionsCollectionPOSTCreatesSession(t *testing.T) {
 	})
 	srv.menuData = &fakeMenuDataLoader{snapshot: &MenuSnapshot{}}
 	srv.mutator = &fakeMutator{
-		createSessionFn: func(title, tool, projectPath, groupPath, modelID, reasoningEffort string) (string, error) {
+		createSessionFn: func(req CreateSessionRequest) (string, error) {
 			return "new-id", nil
 		},
 	}
@@ -219,8 +219,8 @@ func TestSessionsCollectionPOSTForwardsModelID(t *testing.T) {
 
 	var gotModel string
 	srv.mutator = &fakeMutator{
-		createSessionFn: func(title, tool, projectPath, groupPath, modelID, reasoningEffort string) (string, error) {
-			gotModel = modelID
+		createSessionFn: func(req CreateSessionRequest) (string, error) {
+			gotModel = req.ModelID
 			return "new-id", nil
 		},
 	}
@@ -248,8 +248,8 @@ func TestSessionsCollectionPOSTForwardsReasoningEffort(t *testing.T) {
 
 	var gotEffort string
 	srv.mutator = &fakeMutator{
-		createSessionFn: func(title, tool, projectPath, groupPath, modelID, reasoningEffort string) (string, error) {
-			gotEffort = reasoningEffort
+		createSessionFn: func(req CreateSessionRequest) (string, error) {
+			gotEffort = req.ReasoningEffort
 			return "new-id", nil
 		},
 	}
@@ -275,7 +275,7 @@ func TestSessionsCollectionPOSTRejectsInvalidReasoningEffort(t *testing.T) {
 	})
 	srv.menuData = &fakeMenuDataLoader{snapshot: &MenuSnapshot{}}
 	srv.mutator = &fakeMutator{
-		createSessionFn: func(title, tool, projectPath, groupPath, modelID, reasoningEffort string) (string, error) {
+		createSessionFn: func(req CreateSessionRequest) (string, error) {
 			t.Fatal("mutator called for invalid reasoning effort")
 			return "", nil
 		},

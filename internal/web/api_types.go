@@ -16,7 +16,11 @@ const (
 	ErrCodeReadOnly         = "READ_ONLY"
 )
 
-// CreateSessionRequest is the body for POST /api/sessions.
+// CreateSessionRequest is the body for POST /api/sessions. Fields below
+// Title/Tool/ProjectPath mirror what the TUI's New Session dialog
+// (internal/ui/newdialog.go) has always offered — the web dialog grew a
+// matching UI for them (Sidebar/CreateSessionDialog.js) so the two stay
+// at parity instead of the web being a stripped-down subset.
 type CreateSessionRequest struct {
 	Title           string `json:"title"`
 	Tool            string `json:"tool"`
@@ -24,6 +28,46 @@ type CreateSessionRequest struct {
 	GroupPath       string `json:"groupPath,omitempty"`
 	ModelID         string `json:"modelId,omitempty"`
 	ReasoningEffort string `json:"reasoningEffort,omitempty"`
+
+	// Worktree: create the session in an isolated git/jj worktree on its own
+	// branch instead of the shared working directory. Branch is required
+	// when Worktree is true; a non-repo ProjectPath falls back to a normal
+	// session (same #1185 behavior the TUI has) rather than erroring.
+	Worktree bool   `json:"worktree,omitempty"`
+	Branch   string `json:"branch,omitempty"`
+
+	// Sandbox runs the session inside a Docker container (session.SandboxConfig
+	// defaults — no per-request image/limit overrides yet, matching the TUI
+	// dialog's own plain on/off checkbox).
+	Sandbox bool `json:"sandbox,omitempty"`
+
+	// MultiRepo attaches AdditionalPaths to ProjectPath as one multi-repo
+	// session (symlinked, or worktree-cloned per-repo when Worktree is also
+	// set). Ignored when AdditionalPaths is empty.
+	MultiRepo       bool     `json:"multiRepo,omitempty"`
+	AdditionalPaths []string `json:"additionalPaths,omitempty"`
+
+	// Claude carries Claude-specific launch options. Ignored for other tools.
+	Claude *ClaudeSessionOptions `json:"claude,omitempty"`
+}
+
+// ClaudeSessionOptions mirrors session.ClaudeOptions' launch-time fields —
+// see internal/ui/claudeoptions.go for the TUI panel this parallels.
+type ClaudeSessionOptions struct {
+	// SessionMode: "new" (default), "continue", or "resume".
+	SessionMode string `json:"sessionMode,omitempty"`
+	// ResumeSessionID is required when SessionMode is "resume".
+	ResumeSessionID string `json:"resumeSessionId,omitempty"`
+	SkipPermissions bool   `json:"skipPermissions,omitempty"`
+	AutoMode        bool   `json:"autoMode,omitempty"`
+	UseChrome       bool   `json:"useChrome,omitempty"`
+	UseTeammateMode bool   `json:"useTeammateMode,omitempty"`
+	// ExtraArgs is whitespace-split into CLI tokens, same convention as the
+	// TUI's extra-args input (internal/ui/claudeoptions.go GetExtraArgs).
+	ExtraArgs string `json:"extraArgs,omitempty"`
+	// StartQuery is Claude Code's positional startup query — held as one
+	// string and NEVER split on spaces.
+	StartQuery string `json:"startQuery,omitempty"`
 }
 
 // CreateGroupRequest is the body for POST /api/groups.

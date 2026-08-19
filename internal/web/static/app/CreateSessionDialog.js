@@ -1,12 +1,19 @@
 // CreateSessionDialog.js -- Modal form for creating a new session.
 // Restyled (PR-B) to use the bundle's `.dialog` / `.dh` / `.db` / `.df` /
 // `.field` / `.seg-row` / `.btn` classes from app.css.
+//
+// Extended to parity with the TUI's New Session dialog (internal/ui/
+// newdialog.go): group, a searchable working-dir combo, worktree/sandbox/
+// multi-repo toggles, and the Claude launch-options panel. See
+// internal/web/api_types.go's CreateSessionRequest for the wire shape this
+// builds.
 import { html } from 'htm/preact'
-import { useState } from 'preact/hooks'
+import { useState, useEffect } from 'preact/hooks'
 import {
   createSessionDialogSignal, mutationsEnabledSignal,
   toolFilterFallbackSignal, pickerToolsSignal,
 } from './state.js'
+import { menuModelSignal } from './dataModel.js'
 import { Icon, ICONS } from './icons.js'
 import { apiFetch } from './api.js'
 import { displayLabelForTool, resolveCreateSessionPickerTools } from './pickerTools.js'
@@ -103,13 +110,158 @@ function reasoningEffortsForTool(tool) {
   return REASONING_EFFORT_CATALOG[tool] || []
 }
 
+// slugifyBranch turns a session title into a reasonable default worktree
+// branch suffix — same shape git.SanitizeBranchName produces server-side
+// (lowercased, non-alnum runs collapsed to '-'), so the prefilled value
+// rarely needs editing.
+function slugifyBranch(title) {
+  return title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
+// recentProjectPaths returns known project paths (from the live session
+// list), most-recently-used first, deduplicated — the same source and order
+// the TUI's own path-suggestion dropdown uses (session.LastAccessedAt).
+function recentProjectPaths() {
+  const sessions = menuModelSignal.value.sessions || []
+  const byPath = new Map()
+  for (const s of sessions) {
+    if (!s.path) continue
+    const stamp = s.lastAccessedAt || s.createdAt || ''
+    const existing = byPath.get(s.path)
+    if (!existing || stamp > existing.stamp) byPath.set(s.path, { path: s.path, group: s.group, stamp })
+  }
+  return [...byPath.values()].sort((a, b) => (a.stamp < b.stamp ? 1 : a.stamp > b.stamp ? -1 : 0))
+}
+
+// FolderBrowser is a nested modal that walks the local filesystem via
+// GET /api/fs/browse — the practical stand-in for a native Finder picker.
+// Browsers deliberately never hand a page the absolute path of a folder
+// chosen through a native <input webkitdirectory> or the File System Access
+// API, so "browse for a folder" on the web means either that (server lists
+// what's on disk; the web UI here only ever serves 127.0.0.1 or an
+// explicitly-tokened host, so this is the same filesystem a real Finder
+// window on this machine would show) or typing the path — this adds the
+// former without removing the latter.
+function FolderBrowser({ start, onPick, onClose }) {
+  const [path, setPath] = useState('')
+  const [parent, setParent] = useState('')
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  function load(p) {
+    setLoading(true)
+    setError(null)
+    apiFetch('GET', '/api/fs/browse' + (p ? '?path=' + encodeURIComponent(p) : ''))
+      .then(resp => {
+        setPath(resp.path)
+        setParent(resp.parent || '')
+        setEntries(resp.entries || [])
+      })
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load(start) }, []) // eslint-disable-line
+
+  // Breadcrumb segments: clicking one jumps straight there instead of
+  // clicking "up" repeatedly.
+  const segments = []
+  if (path) {
+    const parts = path.split('/').filter(Boolean)
+    let acc = ''
+    for (const part of parts) {
+      acc += '/' + part
+      segments.push({ label: part, path: acc })
+    }
+  }
+
+  return html`
+    <div class="overlay" style="z-index: 61;" onClick=${e => { if (e.target === e.currentTarget) onClose() }}>
+      <div class="dialog" style="width: min(480px, 100%); max-height: min(560px, calc(100vh - 80px));" onClick=${e => e.stopPropagation()}>
+        <div class="dh">
+          <span class="kicker">FOLDER</span>
+          <div class="t">Choose a working directory</div>
+          <button type="button" class="icon-btn" onClick=${onClose} aria-label="Close">
+            <${Icon} d=${ICONS.x}/>
+          </button>
+        </div>
+        <div class="db" style="gap: 8px;">
+          <div style="font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); overflow-x: auto; white-space: nowrap; padding-bottom: 2px;">
+            <span style="cursor: pointer;" onClick=${() => load('/')}>/</span>
+            ${segments.map((seg, i) => html`
+              <span key=${seg.path}>
+                <span style="color: var(--muted-2);"> / </span>
+                <span style=${i === segments.length - 1 ? 'color: var(--text-hi);' : 'cursor: pointer;'}
+                      onClick=${() => i !== segments.length - 1 && load(seg.path)}>${seg.label}</span>
+              </span>
+            `)}
+          </div>
+
+          ${error && html`
+            <div style="font-family: var(--mono); font-size: 11.5px; color: var(--tn-red); padding: 8px 10px;
+                        border: 1px solid rgba(247,118,142,0.3); border-radius: 4px; background: rgba(247,118,142,0.06);">
+              ${error}
+            </div>
+          `}
+
+          <div style="flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); min-height: 220px;">
+            ${loading ? html`
+              <div style="padding: 14px; color: var(--muted); font-size: 12.5px;">Loading…</div>
+            ` : html`
+              ${parent && html`
+                <div class="cm-row" style="border-radius: 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;" onClick=${() => load(parent)}>
+                  <span class="cm-path">.. (up)</span>
+                </div>
+              `}
+              ${entries.length === 0 && !parent && html`
+                <div style="padding: 14px; color: var(--muted); font-size: 12.5px;">No subfolders here.</div>
+              `}
+              ${entries.map(e => html`
+                <div key=${e.path} class="cm-row" style="border-radius: 0; display: flex; align-items: center; gap: 8px;" onClick=${() => load(e.path)}>
+                  <${Icon} d=${ICONS.folder} size=${13}/>
+                  <span class="cm-path" style="flex: 1;">${e.name}</span>
+                </div>
+              `)}
+            `}
+          </div>
+        </div>
+        <div class="df">
+          <button type="button" class="btn ghost" onClick=${onClose}>Cancel</button>
+          <button type="button" class="btn primary" disabled=${!path || loading} onClick=${() => onPick(path)}>
+            Use this folder
+          </button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
 export function CreateSessionDialog() {
   const [title, setTitle] = useState('')
+  const [groupPath, setGroupPath] = useState('')
   const [tool, setTool] = useState('claude')
   const [modelId, setModelId] = useState('')
   const [customModel, setCustomModel] = useState('')
   const [reasoningEffort, setReasoningEffort] = useState('')
   const [path, setPath] = useState('')
+  const [pathMenuOpen, setPathMenuOpen] = useState(false)
+  const [browserOpen, setBrowserOpen] = useState(false)
+  const [worktreeEnabled, setWorktreeEnabled] = useState(false)
+  const [branch, setBranch] = useState('')
+  const [branchTouched, setBranchTouched] = useState(false)
+  const [sandboxEnabled, setSandboxEnabled] = useState(false)
+  const [multiRepoEnabled, setMultiRepoEnabled] = useState(false)
+  const [additionalPaths, setAdditionalPaths] = useState([''])
+  // Claude launch options (internal/ui/claudeoptions.go parity).
+  const [sessionMode, setSessionMode] = useState('new')
+  const [resumeSessionId, setResumeSessionId] = useState('')
+  const [skipPermissions, setSkipPermissions] = useState(false)
+  const [autoMode, setAutoMode] = useState(false)
+  const [useChrome, setUseChrome] = useState(false)
+  const [useTeammateMode, setUseTeammateMode] = useState(false)
+  const [extraArgs, setExtraArgs] = useState('')
+  const [startQuery, setStartQuery] = useState('')
   const [error, setError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -118,15 +270,44 @@ export function CreateSessionDialog() {
   // preserved by placing this guard AFTER all useState calls.
   if (!mutationsEnabledSignal.value) return null
 
+  function toggleWorktree() {
+    const next = !worktreeEnabled
+    setWorktreeEnabled(next)
+    if (next && !branchTouched) setBranch('feature/' + (slugifyBranch(title) || 'session'))
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setError(null)
     setSubmitting(true)
     try {
       const payload = { title, tool, projectPath: path }
-      const modelId = selectedModelId()
-      if (modelId) payload.modelId = modelId
+      if (groupPath) payload.groupPath = groupPath
+      const modelIdValue = selectedModelId()
+      if (modelIdValue) payload.modelId = modelIdValue
       if (reasoningEffort) payload.reasoningEffort = reasoningEffort
+      if (worktreeEnabled && branch.trim()) {
+        payload.worktree = true
+        payload.branch = branch.trim()
+      }
+      if (sandboxEnabled) payload.sandbox = true
+      const repos = additionalPaths.map(p => p.trim()).filter(Boolean)
+      if (multiRepoEnabled && repos.length > 0) {
+        payload.multiRepo = true
+        payload.additionalPaths = repos
+      }
+      if (tool === 'claude') {
+        const claude = {}
+        if (sessionMode !== 'new') claude.sessionMode = sessionMode
+        if (sessionMode === 'resume' && resumeSessionId.trim()) claude.resumeSessionId = resumeSessionId.trim()
+        if (skipPermissions) claude.skipPermissions = true
+        if (autoMode) claude.autoMode = true
+        if (useChrome) claude.useChrome = true
+        if (useTeammateMode) claude.useTeammateMode = true
+        if (extraArgs.trim()) claude.extraArgs = extraArgs.trim()
+        if (startQuery.trim()) claude.startQuery = startQuery.trim()
+        if (Object.keys(claude).length > 0) payload.claude = claude
+      }
       await apiFetch('POST', '/api/sessions', payload)
       createSessionDialogSignal.value = false
     } catch (err) {
@@ -148,13 +329,36 @@ export function CreateSessionDialog() {
     return modelId || ''
   }
 
+  function pickPath(p) {
+    setPath(p)
+    setPathMenuOpen(false)
+  }
+
+  function setAdditionalPath(i, value) {
+    setAdditionalPaths(prev => prev.map((p, idx) => (idx === i ? value : p)))
+  }
+  function addAdditionalPath() {
+    setAdditionalPaths(prev => [...prev, ''])
+  }
+  function removeAdditionalPath(i) {
+    setAdditionalPaths(prev => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : ['']))
+  }
+
   const close = () => (createSessionDialogSignal.value = false)
   const handleBackdropClick = (e) => { if (e.target === e.currentTarget) close() }
   const modelIDs = modelIDsForTool(tool)
   const reasoningEfforts = reasoningEffortsForTool(tool)
   const shownTools = resolveCreateSessionPickerTools(pickerToolsSignal.value)
   const needsCustomModel = modelId === CUSTOM_MODEL
-  const submitDisabled = submitting || !title || !path || (needsCustomModel && !customModel.trim())
+  const groups = menuModelSignal.value.groups || []
+  const allPaths = recentProjectPaths()
+  const pathQuery = path.trim().toLowerCase()
+  const filteredPaths = pathQuery
+    ? allPaths.filter(p => p.path.toLowerCase().includes(pathQuery))
+    : allPaths
+  const submitDisabled = submitting || !title || !path
+    || (needsCustomModel && !customModel.trim())
+    || (worktreeEnabled && !branch.trim())
 
   return html`
     <div class="overlay" onClick=${handleBackdropClick}>
@@ -171,10 +375,55 @@ export function CreateSessionDialog() {
             <label>TITLE</label>
             <input autofocus required value=${title} onInput=${e => setTitle(e.target.value)} placeholder="my-session"/>
           </div>
+
+          ${groups.length > 0 && html`
+            <div class="field">
+              <label>GROUP</label>
+              <select value=${groupPath} onInput=${e => setGroupPath(e.target.value)}>
+                <option value="">default</option>
+                ${groups.filter(g => g.path && g.path !== 'default').map(g => html`
+                  <option key=${g.path} value=${g.path}>${g.label || g.path}</option>
+                `)}
+              </select>
+            </div>
+          `}
+
           <div class="field">
             <label>WORKING DIR</label>
-            <input required value=${path} onInput=${e => setPath(e.target.value)} placeholder="/absolute/path/to/project"/>
+            <div class="combo">
+              <input required value=${path}
+                     onInput=${e => { setPath(e.target.value); setPathMenuOpen(true) }}
+                     onFocus=${() => setPathMenuOpen(true)}
+                     onBlur=${() => setTimeout(() => setPathMenuOpen(false), 120)}
+                     placeholder="/absolute/path/to/project" style="padding-right: 58px;"/>
+              <button type="button" class="combo-chev" aria-label="Browse folders"
+                      style="right: 30px;"
+                      onClick=${() => setBrowserOpen(true)}>
+                <${Icon} d=${ICONS.folder} size=${13}/>
+              </button>
+              ${allPaths.length > 0 && html`
+                <button type="button" class="combo-chev" aria-label="Show recent paths"
+                        onClick=${() => setPathMenuOpen(v => !v)}>▾</button>
+              `}
+            </div>
+            ${pathMenuOpen && filteredPaths.length > 0 && html`
+              <div class="combo-menu">
+                ${filteredPaths.slice(0, 8).map(p => html`
+                  <div key=${p.path} class="cm-row" onMouseDown=${e => e.preventDefault()} onClick=${() => pickPath(p.path)}>
+                    <span class="cm-path">${p.path}</span>
+                    ${p.group && html`<span class="cm-group">${p.group}</span>`}
+                  </div>
+                `)}
+                <div class="cm-foot">from your existing sessions · keep typing for any other path</div>
+              </div>
+            `}
           </div>
+
+          ${browserOpen && html`<${FolderBrowser}
+            start=${path}
+            onPick=${p => { pickPath(p); setBrowserOpen(false) }}
+            onClose=${() => setBrowserOpen(false)}/>`}
+
           <div class="field">
             <label>TOOL</label>
             <div class="seg-row">
@@ -191,16 +440,30 @@ export function CreateSessionDialog() {
               </div>
             `}
           </div>
+
           ${modelIDs.length > 0 && html`
-            <div class="field">
-              <label>MODEL ID</label>
-              <select value=${modelId} onInput=${e => setModelId(e.target.value)}>
-                <option value="">Tool default</option>
-                ${modelIDs.map(m => html`
-                  <option key=${m.value} value=${m.value}>${m.value} — ${m.label}</option>
-                `)}
-                <option value=${CUSTOM_MODEL}>Custom model ID…</option>
-              </select>
+            <div class="opts-row2">
+              <div class="field">
+                <label>MODEL ID</label>
+                <select value=${modelId} onInput=${e => setModelId(e.target.value)}>
+                  <option value="">Tool default</option>
+                  ${modelIDs.map(m => html`
+                    <option key=${m.value} value=${m.value}>${m.value} — ${m.label}</option>
+                  `)}
+                  <option value=${CUSTOM_MODEL}>Custom model ID…</option>
+                </select>
+              </div>
+              ${reasoningEfforts.length > 0 ? html`
+                <div class="field">
+                  <label>REASONING EFFORT</label>
+                  <select value=${reasoningEffort} onInput=${e => setReasoningEffort(e.target.value)}>
+                    <option value="">Tool default</option>
+                    ${reasoningEfforts.map(effort => html`
+                      <option key=${effort.value} value=${effort.value}>${effort.label} — ${effort.value}</option>
+                    `)}
+                  </select>
+                </div>
+              ` : html`<div></div>`}
             </div>
             ${needsCustomModel && html`
               <div class="field">
@@ -209,17 +472,106 @@ export function CreateSessionDialog() {
               </div>
             `}
           `}
-          ${reasoningEfforts.length > 0 && html`
-            <div class="field">
-              <label>REASONING EFFORT</label>
-              <select value=${reasoningEffort} onInput=${e => setReasoningEffort(e.target.value)}>
-                <option value="">Tool default</option>
-                ${reasoningEfforts.map(effort => html`
-                  <option key=${effort.value} value=${effort.value}>${effort.label} — ${effort.value}</option>
+
+          <div class="opts-grid">
+            <label class=${`check-row ${worktreeEnabled ? 'on' : ''}`}>
+              <input type="checkbox" style="display:none" checked=${worktreeEnabled} onChange=${toggleWorktree}/>
+              <span class="cbox">${worktreeEnabled ? '✓' : ''}</span>
+              <span class="lbl">Create in worktree</span>
+              <span class="hint">isolated git worktree + branch</span>
+            </label>
+            ${worktreeEnabled && html`
+              <div class="reveal">
+                <div class="field">
+                  <label>BRANCH</label>
+                  <input required value=${branch}
+                         onInput=${e => { setBranch(e.target.value); setBranchTouched(true) }}
+                         placeholder="feature/branch-name"/>
+                </div>
+              </div>
+            `}
+
+            <label class=${`check-row ${sandboxEnabled ? 'on' : ''}`}>
+              <input type="checkbox" style="display:none" checked=${sandboxEnabled} onChange=${() => setSandboxEnabled(v => !v)}/>
+              <span class="cbox">${sandboxEnabled ? '✓' : ''}</span>
+              <span class="lbl">Run in Docker sandbox</span>
+              <span class="hint">isolated container</span>
+            </label>
+
+            <label class=${`check-row ${multiRepoEnabled ? 'on' : ''}`}>
+              <input type="checkbox" style="display:none" checked=${multiRepoEnabled} onChange=${() => setMultiRepoEnabled(v => !v)}/>
+              <span class="cbox">${multiRepoEnabled ? '✓' : ''}</span>
+              <span class="lbl">Multi-repo mode</span>
+              <span class="hint">attach several repos to one session</span>
+            </label>
+            ${multiRepoEnabled && html`
+              <div class="reveal">
+                ${additionalPaths.map((p, i) => html`
+                  <div class="field" key=${i} style="flex-direction: row; align-items: center; gap: 6px;">
+                    <input style="flex:1" value=${p} onInput=${e => setAdditionalPath(i, e.target.value)}
+                           placeholder="/absolute/path/to/other-repo"/>
+                    <button type="button" class="icon-btn" onClick=${() => removeAdditionalPath(i)} aria-label="Remove repo">
+                      <${Icon} d=${ICONS.x}/>
+                    </button>
+                  </div>
                 `)}
-              </select>
+                <button type="button" class="btn ghost" onClick=${addAdditionalPath} style="align-self: flex-start;">+ Add repo</button>
+              </div>
+            `}
+          </div>
+
+          ${tool === 'claude' && html`
+            <div class="sec-head"><span class="line"></span><span class="label">Claude options</span><span class="line"></span></div>
+
+            <div class="field">
+              <label>SESSION</label>
+              <div class="seg-row">
+                <button type="button" class=${`seg-btn ${sessionMode === 'new' ? 'on' : ''}`} onClick=${() => setSessionMode('new')}>New</button>
+                <button type="button" class=${`seg-btn ${sessionMode === 'continue' ? 'on' : ''}`} onClick=${() => setSessionMode('continue')}>Continue</button>
+                <button type="button" class=${`seg-btn ${sessionMode === 'resume' ? 'on' : ''}`} onClick=${() => setSessionMode('resume')}>Resume</button>
+              </div>
+            </div>
+            ${sessionMode === 'resume' && html`
+              <div class="field">
+                <label>RESUME SESSION ID</label>
+                <input value=${resumeSessionId} onInput=${e => setResumeSessionId(e.target.value)} placeholder="claude conversation UUID"/>
+              </div>
+            `}
+
+            <div class="opts-row2">
+              <label class=${`check-row ${skipPermissions ? 'on' : ''}`}>
+                <input type="checkbox" style="display:none" checked=${skipPermissions} onChange=${() => setSkipPermissions(v => !v)}/>
+                <span class="cbox">${skipPermissions ? '✓' : ''}</span>
+                <span class="lbl">Skip permissions</span>
+              </label>
+              <label class=${`check-row ${autoMode ? 'on' : ''}`}>
+                <input type="checkbox" style="display:none" checked=${autoMode} onChange=${() => setAutoMode(v => !v)}/>
+                <span class="cbox">${autoMode ? '✓' : ''}</span>
+                <span class="lbl">Auto mode</span>
+              </label>
+              <label class=${`check-row ${useChrome ? 'on' : ''}`}>
+                <input type="checkbox" style="display:none" checked=${useChrome} onChange=${() => setUseChrome(v => !v)}/>
+                <span class="cbox">${useChrome ? '✓' : ''}</span>
+                <span class="lbl">Chrome mode</span>
+              </label>
+              <label class=${`check-row ${useTeammateMode ? 'on' : ''}`}>
+                <input type="checkbox" style="display:none" checked=${useTeammateMode} onChange=${() => setUseTeammateMode(v => !v)}/>
+                <span class="cbox">${useTeammateMode ? '✓' : ''}</span>
+                <span class="lbl">Teammate mode</span>
+              </label>
+            </div>
+
+            <div class="field">
+              <label>EXTRA ARGS</label>
+              <input value=${extraArgs} onInput=${e => setExtraArgs(e.target.value)} placeholder="--agent reviewer --model opus"/>
+            </div>
+
+            <div class="field">
+              <label>START QUERY</label>
+              <input value=${startQuery} onInput=${e => setStartQuery(e.target.value)} placeholder="initial prompt (not split on spaces)"/>
             </div>
           `}
+
           ${error && html`
             <div style="font-family: var(--mono); font-size: 11.5px; color: var(--tn-red); padding: 8px 10px;
                         border: 1px solid rgba(247,118,142,0.3); border-radius: 4px; background: rgba(247,118,142,0.06);">

@@ -715,6 +715,21 @@ body[data-rail="hidden"] .rightrail { display: none; }
   display: grid; place-items: center; flex: 0 0 auto;
 }
 .check-row.on .cbox { background: var(--accent); border-color: var(--accent); color: #0b0f1a; }
+.check-row .lbl { font-size: 12.5px; color: var(--text); flex: 1; }
+.check-row .hint { font-size: 11px; color: var(--muted-2); }
+
+/* Section divider + grouped-options layout for the New Session dialog's
+   progressive-disclosure blocks (worktree/sandbox/multi-repo, Claude
+   options) — internal/ui/newdialog.go parity, see CreateSessionDialog.js. */
+.sec-head { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.sec-head .line { flex: 1; height: 1px; background: var(--border); }
+.sec-head .label { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
+.opts-grid { display: flex; flex-direction: column; gap: 8px; }
+.opts-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.reveal {
+  padding-left: 10px; border-left: 2px solid var(--border); margin-left: 6px;
+  display: flex; flex-direction: column; gap: 8px;
+}
 
 /* command palette */
 .cmdk {
