@@ -59,7 +59,7 @@ func TestParity_WebActionMatchesDirectMutator(t *testing.T) {
 				_ = json.NewDecoder(w.Body).Decode(&resp)
 
 				// Direct mutator path.
-				_, err := directFx.store.CreateSession("parity-create", "claude", "/srv/parity", "work", "", "")
+				_, err := directFx.store.CreateSession(CreateSessionRequest{Title: "parity-create", Tool: "claude", ProjectPath: "/srv/parity", GroupPath: "work"})
 				if err != nil {
 					t.Fatalf("direct CreateSession: %v", err)
 				}
@@ -69,8 +69,8 @@ func TestParity_WebActionMatchesDirectMutator(t *testing.T) {
 		{
 			name: "stop_session",
 			fire: func(t *testing.T, webFx, directFx *parityFixture) string {
-				_, _ = webFx.store.CreateSession("seed", "claude", "/srv/seed", "work", "", "")
-				_, _ = directFx.store.CreateSession("seed", "claude", "/srv/seed", "work", "", "")
+				_, _ = webFx.store.CreateSession(CreateSessionRequest{Title: "seed", Tool: "claude", ProjectPath: "/srv/seed", GroupPath: "work"})
+				_, _ = directFx.store.CreateSession(CreateSessionRequest{Title: "seed", Tool: "claude", ProjectPath: "/srv/seed", GroupPath: "work"})
 				// Both stores generated the same id deterministically (sess-005).
 				const id = "sess-005"
 
@@ -90,8 +90,8 @@ func TestParity_WebActionMatchesDirectMutator(t *testing.T) {
 		{
 			name: "start_session",
 			fire: func(t *testing.T, webFx, directFx *parityFixture) string {
-				_, _ = webFx.store.CreateSession("seed", "claude", "/srv/seed", "work", "", "")
-				_, _ = directFx.store.CreateSession("seed", "claude", "/srv/seed", "work", "", "")
+				_, _ = webFx.store.CreateSession(CreateSessionRequest{Title: "seed", Tool: "claude", ProjectPath: "/srv/seed", GroupPath: "work"})
+				_, _ = directFx.store.CreateSession(CreateSessionRequest{Title: "seed", Tool: "claude", ProjectPath: "/srv/seed", GroupPath: "work"})
 				const id = "sess-005"
 
 				req := httptest.NewRequest(http.MethodPost, "/api/sessions/"+id+"/start", nil)
@@ -109,8 +109,8 @@ func TestParity_WebActionMatchesDirectMutator(t *testing.T) {
 		{
 			name: "delete_session",
 			fire: func(t *testing.T, webFx, directFx *parityFixture) string {
-				_, _ = webFx.store.CreateSession("seed", "claude", "/srv/seed", "work", "", "")
-				_, _ = directFx.store.CreateSession("seed", "claude", "/srv/seed", "work", "", "")
+				_, _ = webFx.store.CreateSession(CreateSessionRequest{Title: "seed", Tool: "claude", ProjectPath: "/srv/seed", GroupPath: "work"})
+				_, _ = directFx.store.CreateSession(CreateSessionRequest{Title: "seed", Tool: "claude", ProjectPath: "/srv/seed", GroupPath: "work"})
 				const id = "sess-005"
 
 				req := httptest.NewRequest(http.MethodDelete, "/api/sessions/"+id, nil)
@@ -167,8 +167,8 @@ func TestParity_WebActionMatchesDirectMutator(t *testing.T) {
 		{
 			name: "archive_session",
 			fire: func(t *testing.T, webFx, directFx *parityFixture) string {
-				_, _ = webFx.store.CreateSession("seed", "claude", "/srv/seed", "work", "", "")
-				_, _ = directFx.store.CreateSession("seed", "claude", "/srv/seed", "work", "", "")
+				_, _ = webFx.store.CreateSession(CreateSessionRequest{Title: "seed", Tool: "claude", ProjectPath: "/srv/seed", GroupPath: "work"})
+				_, _ = directFx.store.CreateSession(CreateSessionRequest{Title: "seed", Tool: "claude", ProjectPath: "/srv/seed", GroupPath: "work"})
 				const id = "sess-005"
 
 				req := httptest.NewRequest(http.MethodPost, "/api/sessions/"+id+"/archive", nil)
@@ -186,8 +186,8 @@ func TestParity_WebActionMatchesDirectMutator(t *testing.T) {
 		{
 			name: "unarchive_session",
 			fire: func(t *testing.T, webFx, directFx *parityFixture) string {
-				_, _ = webFx.store.CreateSession("seed", "claude", "/srv/seed", "work", "", "")
-				_, _ = directFx.store.CreateSession("seed", "claude", "/srv/seed", "work", "", "")
+				_, _ = webFx.store.CreateSession(CreateSessionRequest{Title: "seed", Tool: "claude", ProjectPath: "/srv/seed", GroupPath: "work"})
+				_, _ = directFx.store.CreateSession(CreateSessionRequest{Title: "seed", Tool: "claude", ProjectPath: "/srv/seed", GroupPath: "work"})
 				const id = "sess-005"
 				_ = webFx.store.ArchiveSession(id)
 				_ = directFx.store.ArchiveSession(id)
@@ -331,7 +331,7 @@ func TestParity_WebActionMatchesDirectMutator(t *testing.T) {
 func TestParity_TUIChangeVisibleViaWebAPI(t *testing.T) {
 	t.Parallel()
 	fx := newParityFixture()
-	_, _ = fx.store.CreateSession("ts", "claude", "/srv/ts", "work", "", "")
+	_, _ = fx.store.CreateSession(CreateSessionRequest{Title: "ts", Tool: "claude", ProjectPath: "/srv/ts", GroupPath: "work"})
 	const id = "sess-005"
 
 	// "TUI" path: mutate the store directly.
@@ -488,13 +488,13 @@ func (s *parityStore) LoadArchivedMenuSnapshot() (*MenuSnapshot, error) {
 
 // SessionMutator implementation.
 
-func (s *parityStore) CreateSession(title, tool, projectPath, groupPath, modelID, reasoningEffort string) (string, error) {
+func (s *parityStore) CreateSession(req CreateSessionRequest) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id := nextDeterministicID(&s.nextID)
 	s.sessions[id] = &MenuSession{
-		ID: id, Title: title, Tool: tool,
-		Status: session.StatusIdle, GroupPath: groupPath, ProjectPath: projectPath,
+		ID: id, Title: req.Title, Tool: req.Tool,
+		Status: session.StatusIdle, GroupPath: req.GroupPath, ProjectPath: req.ProjectPath,
 		Order: len(s.order), CreatedAt: s.now(),
 	}
 	s.order = append(s.order, id)

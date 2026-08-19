@@ -353,14 +353,14 @@ func (s *fixtureStore) LoadArchivedMenuSnapshot() (*web.MenuSnapshot, error) {
 }
 
 // CreateSession implements web.SessionMutator.
-func (s *fixtureStore) CreateSession(title, tool, projectPath, groupPath, modelID, reasoningEffort string) (string, error) {
+func (s *fixtureStore) CreateSession(req web.CreateSessionRequest) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id := fmt.Sprintf("sess-%03d", s.nextID)
 	s.nextID++
 	s.sessions[id] = &web.MenuSession{
-		ID: id, Title: title, Tool: tool, MCPSupported: session.ToolSupportsMCPManager(tool),
-		Status: session.StatusIdle, GroupPath: groupPath, ProjectPath: projectPath,
+		ID: id, Title: req.Title, Tool: req.Tool, MCPSupported: session.ToolSupportsMCPManager(req.Tool),
+		Status: session.StatusIdle, GroupPath: req.GroupPath, ProjectPath: req.ProjectPath,
 		Order: len(s.order), CreatedAt: s.now(),
 	}
 	s.order = append(s.order, id)

@@ -114,7 +114,7 @@ type MenuDataLoader interface {
 // SessionMutator is implemented by internal/ui.WebMutator and injected at startup.
 // It bridges web HTTP handlers to the TUI session/group management methods.
 type SessionMutator interface {
-	CreateSession(title, tool, projectPath, groupPath, modelID, reasoningEffort string) (string, error)
+	CreateSession(req CreateSessionRequest) (string, error)
 	StartSession(sessionID string) error
 	StopSession(sessionID string) error
 	RestartSession(sessionID string) error

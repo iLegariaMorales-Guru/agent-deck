@@ -76,7 +76,11 @@ func (s *Server) handleSessionsCollection(w http.ResponseWriter, r *http.Request
 			writeAPIError(w, http.StatusBadRequest, ErrCodeBadRequest, err.Error())
 			return
 		}
-		sessionID, err := s.mutator.CreateSession(req.Title, req.Tool, req.ProjectPath, req.GroupPath, req.ModelID, req.ReasoningEffort)
+		if req.Worktree && strings.TrimSpace(req.Branch) == "" {
+			writeAPIError(w, http.StatusBadRequest, ErrCodeBadRequest, "branch is required to create a worktree")
+			return
+		}
+		sessionID, err := s.mutator.CreateSession(req)
 		if err != nil {
 			writeAPIError(w, http.StatusInternalServerError, ErrCodeInternalError, err.Error())
 			return

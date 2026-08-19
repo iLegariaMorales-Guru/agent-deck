@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -92,43 +93,88 @@ func (m *WebMutator) beginHeadlessTx() (unlock func(), err error) {
 }
 
 // CreateSession creates and starts a new session, persisting it to storage.
-func (m *WebMutator) CreateSession(title, tool, projectPath, groupPath, modelID, reasoningEffort string) (string, error) {
+//
+// This delegates the actual worktree/sandbox/multi-repo/Claude-options
+// creation logic to Home's own createSessionInGroupWithWorktreeAndOptions —
+// the same function the TUI's New Session dialog submit handler calls — so
+// the web dialog (CreateSessionDialog.js) gets full parity with the TUI
+// dialog (newdialog.go) without a second, divergent implementation of that
+// logic. That function returns a tea.Cmd (a `func() tea.Msg` meant to run on
+// bubbletea's async command runner); here it is invoked synchronously since
+// there is no Tea loop driving headless/web requests.
+func (m *WebMutator) CreateSession(req web.CreateSessionRequest) (string, error) {
 	unlock, err := m.beginHeadlessTx()
 	if err != nil {
 		return "", err
 	}
 	defer unlock()
+
 	// #1706: project_path is identity and must be absolute — the request may
 	// carry a relative path, which tmux would resolve against the tmux server's
-	// cwd rather than this process's.
+	// cwd rather than this process's. Additional (multi-repo) paths need the
+	// same treatment.
+	projectPath := req.ProjectPath
 	projectPath, err = session.ResolveProjectPath(projectPath)
 	if err != nil {
 		return "", err
 	}
-	var inst *session.Instance
-	if groupPath != "" {
-		inst = session.NewInstanceWithGroupAndTool(title, projectPath, groupPath, tool)
-	} else {
-		inst = session.NewInstanceWithTool(title, projectPath, tool)
-	}
-	if tool != "" && tool != "shell" {
-		inst.Command = tool
+	additionalPaths := make([]string, 0, len(req.AdditionalPaths))
+	for _, p := range req.AdditionalPaths {
+		resolved, err := session.ResolveProjectPath(p)
+		if err != nil {
+			return "", fmt.Errorf("resolve additional path %q: %w", p, err)
+		}
+		additionalPaths = append(additionalPaths, resolved)
 	}
 
-	if modelID = strings.TrimSpace(modelID); modelID != "" {
-		if err := inst.ApplyLaunchModel(modelID); err != nil {
-			return "", err
+	branch := strings.TrimSpace(req.Branch)
+	worktreeEnabled := req.Worktree && branch != ""
+
+	var worktreePath, worktreeRepoRoot string
+	if worktreeEnabled {
+		// explicit=true: the web dialog only sends worktree=true when the user
+		// checked the box, so (unlike a config-default toggle) a non-repo path
+		// should fail loud rather than silently fall back — same rule the TUI
+		// applies for an explicit checkbox toggle (see IsWorktreeExplicit).
+		wtPath, repoRoot, fallback, errMsg := resolveWorktreeTarget(projectPath, branch, true)
+		if errMsg != "" {
+			return "", fmt.Errorf("%s", errMsg)
 		}
-	}
-	if reasoningEffort = strings.TrimSpace(reasoningEffort); reasoningEffort != "" {
-		if err := inst.ApplyLaunchReasoningEffort(reasoningEffort); err != nil {
-			return "", err
+		if fallback {
+			worktreeEnabled = false
+			branch = ""
+		} else {
+			worktreePath = wtPath
+			worktreeRepoRoot = repoRoot
 		}
 	}
 
-	if err := inst.Start(); err != nil {
-		return "", fmt.Errorf("start session: %w", err)
+	toolOptionsJSON, claudeExtraArgs, claudeStartQuery, err := buildCreateSessionToolOptions(req)
+	if err != nil {
+		return "", err
 	}
+
+	cmd := m.h.createSessionInGroupWithWorktreeAndOptions(
+		req.Title, projectPath, req.Tool, req.GroupPath,
+		worktreePath, worktreeRepoRoot, branch,
+		false, // geminiYoloMode — no web UI toggle for this yet
+		req.Sandbox,
+		toolOptionsJSON, claudeExtraArgs, claudeStartQuery,
+		req.ModelID,
+		req.MultiRepo, additionalPaths,
+		"", "", // parentSessionID/parentProjectPath — only forks set these
+		"",    // tempID — no optimistic placeholder row in headless mode
+		false, // autoName — the caller supplied an explicit title
+	)
+	msg := cmd()
+	created, ok := msg.(sessionCreatedMsg)
+	if !ok {
+		return "", fmt.Errorf("unexpected create-session result type %T", msg)
+	}
+	if created.err != nil {
+		return "", created.err
+	}
+	inst := created.instance
 
 	storage, err := session.NewStorageWithProfile(m.h.profile)
 	if err != nil {
@@ -146,6 +192,57 @@ func (m *WebMutator) CreateSession(title, tool, projectPath, groupPath, modelID,
 		return "", fmt.Errorf("save session: %w", err)
 	}
 	return inst.ID, nil
+}
+
+// buildCreateSessionToolOptions builds the tool-specific launch-options JSON
+// for a create-session request, mirroring how the TUI's New Session dialog
+// assembles it at submit time (internal/ui/home.go, the `command == "claude"`
+// / `command == "codex"` branches right before
+// createSessionInGroupWithWorktreeAndOptions is called).
+//
+// Model and reasoning-effort overrides for other tools are applied by that
+// shared closure itself via its launchModelID param / codex's ReasoningEffort
+// field; Claude's reasoning effort has no separate param there (it lives on
+// ClaudeOptions.Effort, same as the TUI's newdialog.go GetClaudeOptions), so
+// it is folded in here before the session ever starts. Pulled out as a pure
+// function (no Home/tmux dependency) so it is unit-testable on its own.
+func buildCreateSessionToolOptions(req web.CreateSessionRequest) (toolOptionsJSON json.RawMessage, extraArgs []string, startQuery string, err error) {
+	switch req.Tool {
+	case "claude":
+		userConfig, _ := session.LoadUserConfig()
+		opts := session.NewClaudeOptions(userConfig)
+		opts.SessionMode = "new"
+		if req.Claude != nil {
+			if req.Claude.SessionMode != "" {
+				opts.SessionMode = req.Claude.SessionMode
+			}
+			opts.ResumeSessionID = req.Claude.ResumeSessionID
+			opts.SkipPermissions = req.Claude.SkipPermissions
+			opts.AutoMode = req.Claude.AutoMode
+			opts.UseChrome = req.Claude.UseChrome
+			opts.UseTeammateMode = req.Claude.UseTeammateMode
+			if args := strings.Fields(req.Claude.ExtraArgs); len(args) > 0 {
+				extraArgs = args
+			}
+			startQuery = strings.TrimSpace(req.Claude.StartQuery)
+		}
+		opts.Effort = strings.TrimSpace(req.ReasoningEffort)
+		toolOptionsJSON, err = session.MarshalToolOptions(opts)
+		if err != nil {
+			return nil, nil, "", fmt.Errorf("marshal claude options: %w", err)
+		}
+	case "codex":
+		yolo := false
+		codexOpts := &session.CodexOptions{
+			YoloMode:        &yolo,
+			ReasoningEffort: strings.TrimSpace(req.ReasoningEffort),
+		}
+		toolOptionsJSON, err = session.MarshalToolOptions(codexOpts)
+		if err != nil {
+			return nil, nil, "", fmt.Errorf("marshal codex options: %w", err)
+		}
+	}
+	return toolOptionsJSON, extraArgs, startQuery, nil
 }
 
 // StartSession starts a stopped/idle session by ID.
