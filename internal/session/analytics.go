@@ -75,6 +75,14 @@ var modelContextWindowPrefixes = []struct {
 	prefix string
 	size   int
 }{
+	// Claude 5 family (opus-5/sonnet-5/fable-5, no minor version segment —
+	// see parseClaudeModel in model_info.go): 1M context. Missing here meant
+	// a Sonnet 5 session's real ~1M window fell through to the 200k default
+	// below, inflating its reported context-usage percent by ~5x (a real
+	// "/context says 7%, sidebar says 32%" bug report on a Sonnet 5 session).
+	{"claude-opus-5", 1_000_000},
+	{"claude-sonnet-5", 1_000_000},
+	{"claude-fable-5", 1_000_000},
 	// 4.8 models: 1M context (must precede 4.x fallback)
 	{"claude-opus-4-8", 1_000_000},
 	// 4.7 models: 1M context (must precede 4.x fallback)
