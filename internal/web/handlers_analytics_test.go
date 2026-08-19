@@ -185,6 +185,76 @@ func TestContextBatch_LiveModelFallback(t *testing.T) {
 	}
 }
 
+// TestContextBatch_PrefersStatusLineOverTranscript covers the fix for a real
+// bug report: a Sonnet 5 session's own /context said 7% while the sidebar
+// (deriving context% from a transcript re-parse + agent-deck's own
+// model-context-window table) said 32% for the same session — the table had
+// no entry for the new model family (see analytics.go's
+// modelContextWindowPrefixes, #1963). When Claude Code's own statusLine
+// data (internal/session/claude_statusline.go) is available for a session,
+// it must win over the transcript-derived estimate entirely, including for
+// cost and model — not just supplement it.
+func TestContextBatch_PrefersStatusLineOverTranscript(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+
+	const projectPath = "/srv/statusline-pref"
+	const claudeSessionID = "44444444-5555-6666-7777-888888888888"
+	// Transcript alone (no window-size hint) would compute against the 200k
+	// default: 180000/200000 = 90%. The statusLine value below (7.2%, sourced
+	// from Claude's real ~1M window) must win instead.
+	writeClaudeFixtureJSONL(t, configDir, projectPath, claudeSessionID, 180000, 0, "claude-sonnet-5")
+
+	if err := session.WriteStatusLineContext(session.StatusLineContext{
+		SessionID:         claudeSessionID,
+		Model:             "claude-sonnet-5",
+		ContextWindowSize: 1_000_000,
+		UsedPercentage:    7.2,
+		CostUSD:           0.59,
+	}); err != nil {
+		t.Fatalf("seed statusline context: %v", err)
+	}
+	t.Cleanup(func() {
+		if path := session.StatusLineContextFilePath(claudeSessionID); path != "" {
+			_ = os.Remove(path)
+		}
+	})
+
+	snapshot := &MenuSnapshot{
+		Items: []MenuItem{{
+			Type: MenuItemTypeSession,
+			Session: &MenuSession{
+				ID:              "claude-sess",
+				Tool:            "claude",
+				ProjectPath:     projectPath,
+				ClaudeSessionID: claudeSessionID,
+			},
+		}},
+	}
+	srv := NewServer(Config{ListenAddr: "127.0.0.1:0", MenuData: &fakeMenuData{snapshot: snapshot}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/analytics/context/batch?ids=claude-sess", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Context       map[string]float64 `json:"context"`
+		EstimatedCost map[string]float64 `json:"estimatedCost"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := resp.Context["claude-sess"]; got < 7.1 || got > 7.3 {
+		t.Errorf("context = %v, want 7.2 (from statusLine, not the 90%% transcript-derived estimate)", got)
+	}
+	if got := resp.EstimatedCost["claude-sess"]; got != 0.59 {
+		t.Errorf("estimatedCost = %v, want 0.59 (from statusLine, not a price-table estimate)", got)
+	}
+}
+
 func TestContextBatch_EmptyIDs(t *testing.T) {
 	srv := NewServer(Config{ListenAddr: "127.0.0.1:0", MenuData: &fakeMenuData{snapshot: &MenuSnapshot{}}})
 
