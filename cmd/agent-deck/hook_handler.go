@@ -616,7 +616,7 @@ func cleanStaleHookFiles() {
 // handleHooks handles the "hooks" CLI subcommand for manual hook management.
 func handleHooks(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: agent-deck hooks <install|uninstall|status>")
+		fmt.Fprintln(os.Stderr, "Usage: agent-deck hooks <install|uninstall|status|install-statusline|uninstall-statusline>")
 		os.Exit(1)
 	}
 
@@ -627,9 +627,21 @@ func handleHooks(args []string) {
 		handleHooksUninstall()
 	case "status":
 		handleHooksStatus()
+	// install-statusline / uninstall-statusline are deliberately separate
+	// from install/uninstall above rather than bundled in: `hooks install`
+	// is already called unattended (internal/ui/home.go auto-injects event
+	// hooks on TUI startup), and installing statusLine edits a DIFFERENT,
+	// single-valued settings.json key that affects Claude Code's footer in
+	// every session on the machine, agent-deck-managed or not — see
+	// InjectClaudeStatusLine. That's a bigger, more visible side effect than
+	// adding an event hook, so it stays opt-in behind its own command.
+	case "install-statusline":
+		installStatusLine(getClaudeConfigDirForHooks())
+	case "uninstall-statusline":
+		uninstallStatusLine(getClaudeConfigDirForHooks())
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown hooks subcommand: %s\n", args[0])
-		fmt.Fprintln(os.Stderr, "Usage: agent-deck hooks <install|uninstall|status>")
+		fmt.Fprintln(os.Stderr, "Usage: agent-deck hooks <install|uninstall|status|install-statusline|uninstall-statusline>")
 		os.Exit(1)
 	}
 }
@@ -676,6 +688,13 @@ func handleHooksStatus() {
 	} else {
 		fmt.Println("Status: NOT INSTALLED")
 		fmt.Println("Run 'agent-deck hooks install' to install.")
+	}
+
+	if session.CheckClaudeStatusLineInstalled(configDir) {
+		fmt.Println("StatusLine: INSTALLED (context %, cost, and model come from Claude itself)")
+	} else {
+		fmt.Println("StatusLine: NOT INSTALLED")
+		fmt.Println("Run 'agent-deck hooks install-statusline' to install (opt-in — see its help for what it changes).")
 	}
 
 	// Show hook status files

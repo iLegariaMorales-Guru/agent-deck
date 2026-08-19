@@ -96,6 +96,28 @@ func claudeTranscriptAnalytics(ms *MenuSession) contextCacheEntry {
 		// Instance.TranscriptIsResolvableLocally).
 		return contextCacheEntry{}
 	}
+
+	// Prefer Claude Code's OWN numbers over our transcript-derived estimate,
+	// when available (see internal/session/claude_statusline.go). This is
+	// authoritative — Claude computes context_window.used_percentage and
+	// cost.total_cost_usd itself on every turn — instead of agent-deck
+	// re-deriving them via a model-context-window lookup table that has
+	// repeatedly gone stale the moment a new model family ships (#1963).
+	// Requires the user to have run `agent-deck hooks install-statusline`
+	// (opt-in: it edits global Claude Code settings); falls through to the
+	// transcript parse below when that file doesn't exist yet, e.g. before
+	// the first turn since install.
+	if ctx, ok := session.ReadStatusLineContext(ms.ClaudeSessionID); ok {
+		entry := contextCacheEntry{percent: ctx.UsedPercentage, cost: ctx.CostUSD, at: time.Now()}
+		if entry.percent > 100 {
+			entry.percent = 100
+		}
+		if info := session.ParseModelID(ctx.Model); info.Model != "" {
+			entry.model = liveModel{Model: info.Model, Version: info.Version}
+		}
+		return entry
+	}
+
 	path := session.ResolveClaudeTranscriptPath(ms.ProjectPath, ms.ClaudeSessionID)
 	if path == "" {
 		return contextCacheEntry{}
