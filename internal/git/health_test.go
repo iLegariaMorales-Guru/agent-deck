@@ -23,7 +23,7 @@ func TestCheckWorktreeHealth_WorktreeMissing(t *testing.T) {
 	if !h.WorktreeMissing {
 		t.Errorf("WorktreeMissing = false, want true")
 	}
-	if h.UncommittedChanges || h.Ahead != 0 || h.Behind != 0 || h.UpstreamGone {
+	if h.UncommittedChanges || h.UpstreamGone {
 		t.Errorf("expected only WorktreeMissing set, got %+v", h)
 	}
 }
@@ -91,7 +91,14 @@ func TestCheckWorktreeHealth_UntrackedFilesIgnored(t *testing.T) {
 	}
 }
 
-func TestCheckWorktreeHealth_AheadBehind(t *testing.T) {
+// TestCheckWorktreeHealth_DivergenceIsNotFlagged pins the opposite of a
+// removed feature: an earlier version of this check flagged ahead/behind
+// commit counts vs the default branch, but being behind main is normal for
+// any active branch — real user feedback was that it stayed lit on
+// healthy, actively-worked sessions with nothing actually wrong. A branch
+// that's diverged from main (in both directions) but otherwise clean must
+// report as clean.
+func TestCheckWorktreeHealth_DivergenceIsNotFlagged(t *testing.T) {
 	repo := t.TempDir()
 	createTestRepo(t, repo)
 	createBranch(t, repo, "feature-diverge")
@@ -101,14 +108,14 @@ func TestCheckWorktreeHealth_AheadBehind(t *testing.T) {
 		t.Fatalf("CreateWorktree: %v", err)
 	}
 
-	// One new commit on the branch (ahead)...
+	// One new commit on the branch...
 	if err := os.WriteFile(filepath.Join(worktreePath, "branch-only.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	runGit(t, worktreePath, "add", ".")
 	runGit(t, worktreePath, "commit", "-m", "branch commit")
 
-	// ...and one new commit on main (behind), made from the original repo dir.
+	// ...and one new commit on main, made from the original repo dir.
 	if err := os.WriteFile(filepath.Join(repo, "main-only.txt"), []byte("y"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -116,8 +123,8 @@ func TestCheckWorktreeHealth_AheadBehind(t *testing.T) {
 	runGit(t, repo, "commit", "-m", "main commit")
 
 	h := CheckWorktreeHealth(worktreePath, "feature-diverge", true)
-	if h.Ahead != 1 || h.Behind != 1 {
-		t.Errorf("Ahead/Behind = %d/%d, want 1/1", h.Ahead, h.Behind)
+	if !h.IsClean() {
+		t.Errorf("expected clean health despite divergence from main, got %+v", h)
 	}
 }
 
@@ -148,7 +155,7 @@ func TestCheckWorktreeHealth_NoBranchNoOpinion(t *testing.T) {
 	createTestRepo(t, repo)
 
 	h := CheckWorktreeHealth(repo, "", false)
-	if h.Ahead != 0 || h.Behind != 0 || h.UpstreamGone {
-		t.Errorf("expected zero ahead/behind/upstreamGone with no branch, got %+v", h)
+	if h.UpstreamGone {
+		t.Errorf("expected upstreamGone false with no branch, got %+v", h)
 	}
 }

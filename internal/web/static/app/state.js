@@ -52,8 +52,8 @@ export const sessionLiveModelSignal = signal({})
 export const sessionEstimatedCostSignal = signal({})
 
 // Per-session health flags from GET /api/sessions/health/batch (map of
-// sessionId -> {worktreeMissing, uncommittedChanges, ahead, behind,
-// upstreamGone}) — cheap local git checks (internal/git/health.go) that
+// sessionId -> {worktreeMissing, uncommittedChanges, upstreamGone}) — cheap
+// local git checks (internal/git/health.go) that
 // catch a session's worktree/branch trouble before it turns into a hard
 // failure trying to create/attach/finish. Sessions with nothing to badge
 // are simply absent from the map. See dataModel.js and Sidebar.js.

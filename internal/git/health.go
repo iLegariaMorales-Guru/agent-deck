@@ -3,7 +3,6 @@ package git
 import (
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 )
 
@@ -33,12 +32,6 @@ type WorktreeHealth struct {
 	// that were never meant to be committed don't leave this permanently
 	// true. Always false when WorktreeMissing (nothing to check).
 	UncommittedChanges bool `json:"uncommittedChanges,omitempty"`
-	// Ahead/Behind are commit counts between branchName and the repo's
-	// default branch (rev-list --left-right --count default...branch).
-	// Both are 0 when there's nothing to compare (branchName IS the
-	// default branch, or the default branch can't be resolved).
-	Ahead  int `json:"ahead,omitempty"`
-	Behind int `json:"behind,omitempty"`
 	// UpstreamGone is true when branchName has a configured upstream whose
 	// remote-tracking ref no longer exists locally — the same signal `git
 	// branch -vv` renders as "[gone]". In practice this almost always means
@@ -49,6 +42,13 @@ type WorktreeHealth struct {
 	// not true.
 	UpstreamGone bool `json:"upstreamGone,omitempty"`
 }
+
+// Deliberately NOT tracked here: ahead/behind commit counts vs the default
+// branch. An earlier version of this badge included them, but being N
+// commits behind main is completely normal for any active branch — it's
+// not a problem to warn about, so surfacing it was pure noise (real user
+// feedback: it stayed lit on healthy, actively-worked sessions with nothing
+// wrong). Only genuinely actionable signals belong on this struct.
 
 // IsClean reports whether h found nothing worth badging — used by callers
 // to skip emitting an entry at all rather than sending an all-zero object.
@@ -64,8 +64,8 @@ func (h WorktreeHealth) IsClean() bool {
 // than "not a git repo, skip".
 //
 // branchName may be empty (non-git session, or branch lookup failed
-// upstream) — Ahead/Behind/UpstreamGone are simply left at their zero value
-// in that case rather than guessing.
+// upstream) — UpstreamGone is simply left at its zero value in that case
+// rather than guessing.
 func CheckWorktreeHealth(workDir, branchName string, worktreeExpected bool) WorktreeHealth {
 	var h WorktreeHealth
 	if workDir == "" {
@@ -81,9 +81,6 @@ func CheckWorktreeHealth(workDir, branchName string, worktreeExpected bool) Work
 	h.UncommittedChanges = hasUncommittedChanges(workDir)
 
 	if branchName != "" {
-		if base, err := GetDefaultBranch(workDir); err == nil && base != branchName {
-			h.Ahead, h.Behind = aheadBehind(workDir, base, branchName)
-		}
 		h.UpstreamGone = branchUpstreamGone(workDir, branchName)
 	}
 	return h
@@ -103,28 +100,6 @@ func hasUncommittedChanges(dir string) bool {
 		return false
 	}
 	return strings.TrimSpace(string(out)) != ""
-}
-
-// aheadBehind returns how many commits branchName has that baseBranch
-// doesn't (ahead) and vice versa (behind). Refs are shared across all
-// worktrees of a repo, so dir just needs to be somewhere inside it — it
-// doesn't have to be the specific worktree branchName is checked out in.
-func aheadBehind(dir, baseBranch, branchName string) (ahead, behind int) {
-	out, err := exec.Command("git", "-C", dir, "rev-list", "--left-right", "--count",
-		baseBranch+"..."+branchName).Output()
-	if err != nil {
-		return 0, 0
-	}
-	fields := strings.Fields(strings.TrimSpace(string(out)))
-	if len(fields) != 2 {
-		return 0, 0
-	}
-	// `rev-list --left-right --count A...B` prints "<A-only> <B-only>":
-	// commits reachable from baseBranch (left) not branchName, then vice
-	// versa — i.e. behind, then ahead.
-	behind, _ = strconv.Atoi(fields[0])
-	ahead, _ = strconv.Atoi(fields[1])
-	return ahead, behind
 }
 
 // branchUpstreamGone reports whether branchName has a configured upstream
