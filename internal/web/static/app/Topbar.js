@@ -92,6 +92,10 @@ export function Topbar() {
             </span>
           `
         })()}
+        <button class="icon-btn top-search-btn" onClick=${() => (paletteOpenSignal.value = true)}
+          title="Search / commands (⌘K)" aria-label="Search and commands">
+          <${Icon} d=${ICONS.search} size=${14}/>
+        </button>
         <${ToastHistoryDrawerToggle}/>
         <button
           class=${`icon-btn ${rail === 'visible' ? 'active' : ''}`}
