@@ -3,6 +3,7 @@
 import { render, html } from 'htm/preact'
 import { App } from './App.js'
 import { apiFetch } from './api.js'
+import { initPush } from './push.js'
 import {
   sessionsSignal,
   sessionsLoadedSignal,
@@ -201,5 +202,6 @@ if (root) {
   applyRouteSelection()
   loadMenu()
   registerServiceWorker()
+  initPush()
   render(html`<${App} />`, root)
 }
