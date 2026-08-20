@@ -31,6 +31,14 @@ button { font: inherit; color: inherit; }
     "side main rail"
     "foot foot foot";
   height: 100vh;
+  /* iOS Safari sizes 100vh against the *collapsed*-toolbar viewport, so a
+     fixed-height grid like this one has its bottom row (the mobile tab
+     bar) sitting underneath the toolbar whenever it's expanded -- and
+     since there's no outer page scroll (every pane scrolls internally),
+     Safari never gets the gesture that would auto-collapse it. 100dvh
+     tracks the *actual* visible viewport instead; browsers that don't
+     support it just keep the 100vh above. */
+  height: 100dvh;
 }
 body[data-rail="hidden"] .app { grid-template-columns: var(--sidebar-w) 1fr 0; }
 body[data-rail="hidden"] .rightrail { display: none; }
@@ -122,8 +130,10 @@ body[data-rail="hidden"] .rightrail { display: none; }
   .top-tab span.lbl-long { display: none; }
   .top-search .kbd { display: none; }
 }
+.top-search-btn { display: none; }
 @media (max-width: 1000px) {
   .top-search { display: none; }
+  .top-search-btn { display: inline-grid; }
   .top-tab { padding: 5px 7px; }
 }
 
