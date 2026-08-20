@@ -1,7 +1,7 @@
 // RightRail.js -- Configurable session detail rail (right side).
 //
-// Cards: Overview, Usage, MCPs, Skills, Children, Events. User toggles which
-// are visible in the rail-add picker at the bottom.
+// Cards: Overview, Usage, MCPs, Skills, Children, Events, Timeline. User
+// toggles which are visible in the rail-add picker at the bottom.
 //
 // The Children card renders the conductor child-session topology. The
 // tree is built client-side from the same menuModelSignal that drives
@@ -9,13 +9,24 @@
 // The Go endpoint at GET /api/sessions/{id}/children exposes the same
 // shape for direct API consumers and lives in handlers_children.go.
 //
+// The Timeline card is different from every other card here: it's the
+// only one that fetches its own data (GET /api/sessions/{id}/timeline)
+// instead of reading off menuModelSignal, because a merged commit/push/
+// prompt/edit feed isn't part of the menu snapshot's shape and doesn't
+// need to be — it's only ever needed while this one card is open. See
+// handlers_timeline.go for what it merges (git log/reflog + the Claude
+// transcript) and why compacting a session's context doesn't lose any of
+// it.
+//
 // MCPs / Skills / Events still render an informative "TUI-only" hint
 // because their underlying APIs are not yet wired through the right rail.
 import { html } from 'htm/preact'
 import { signal } from '@preact/signals'
+import { useState, useEffect } from 'preact/hooks'
 import { menuModelSignal } from './dataModel.js'
 import { selectedIdSignal } from './state.js'
 import { rightRailPanelsSignal } from './uiState.js'
+import { apiFetch } from './api.js'
 
 // Module-scope signal so collapsed state survives RightRail re-mounts
 // (e.g. when the user switches between sessions and back). Keyed by
@@ -29,6 +40,7 @@ const AVAIL_PANELS = [
   { id: 'skills',   label: 'Skills' },
   { id: 'children', label: 'Children (conductor)' },
   { id: 'events',   label: 'Events (watcher)' },
+  { id: 'timeline', label: 'Timeline' },
 ]
 
 function Card({ title, badge, testid, children }) {
@@ -117,6 +129,150 @@ function ChildrenTree({ rootId, sessions }) {
   `
 }
 
+// ---------- Timeline card ----------
+// See handlers_timeline.go for the merge this fetches: git commits/pushes
+// on the session's worktree+branch, plus prompts/edits/PR opens-merges/
+// compact markers parsed out of the Claude transcript.
+
+function fmtTimelineTime(iso) {
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  } catch (_) {
+    return ''
+  }
+}
+
+// shortenPath keeps a long file path from blowing out the ~280px rail —
+// full path still lives in the title attr for hover.
+function shortenPath(p) {
+  if (!p) return ''
+  const parts = p.split('/')
+  return parts.length <= 2 ? p : '…/' + parts.slice(-2).join('/')
+}
+
+// groupTimelineEvents turns the API's flat newest-first array into
+// {prompt, rows} sections: walking newest-first, every non-prompt event
+// belongs to the PRECEDING prompt in time (the one that triggered it) —
+// which is the NEXT prompt event this walk reaches, since it's older.
+// Events before the session's first-ever prompt (or a non-Claude session
+// with no prompts at all) land in a trailing group with prompt: null.
+function groupTimelineEvents(events) {
+  const groups = []
+  let pending = []
+  for (const ev of events) {
+    if (ev.kind === 'prompt') {
+      groups.push({ prompt: ev, rows: pending.reverse() })
+      pending = []
+    } else {
+      pending.push(ev)
+    }
+  }
+  if (pending.length > 0) groups.push({ prompt: null, rows: pending.reverse() })
+  return groups
+}
+
+const TIMELINE_FILTERS = [
+  { id: 'all', label: 'all' },
+  { id: 'git', label: 'git' },
+  { id: 'prompts', label: 'prompts' },
+]
+
+function timelineRowMatchesFilter(ev, filter) {
+  if (filter === 'all') return true
+  if (filter === 'git') return ev.kind === 'commit' || ev.kind === 'push' || ev.kind === 'pr'
+  if (filter === 'prompts') return ev.kind === 'compact' // prompts themselves are the group headers, always shown
+  return true
+}
+
+function TimelineRow({ ev }) {
+  if (ev.kind === 'compact') {
+    return html`<div class="tl-compact">compacted · ${fmtTimelineTime(ev.time)}</div>`
+  }
+  let body
+  if (ev.kind === 'commit') {
+    body = html`<span class="hash">${ev.hash?.slice(0, 7)}</span> ${ev.text}${ev.files ? html` <span class="tl-filecount">${ev.files} files</span>` : ''}`
+  } else if (ev.kind === 'push') {
+    body = html`<span class="push-lbl">↑</span> pushed to origin${ev.hash ? html` <span class="hash" style="color:var(--tn-cyan)">${ev.hash.slice(0, 7)}</span>` : ''}`
+  } else if (ev.kind === 'pr') {
+    body = html`<span class="pr-lbl">⑂</span> ${ev.text}`
+  } else if (ev.kind === 'edit') {
+    body = html`<span class="path" title=${ev.path}>${shortenPath(ev.path)}</span>`
+  } else {
+    body = ev.text
+  }
+  return html`
+    <div class=${`tl-row ${ev.kind}`}>
+      <span class="tl-dot"></span>
+      <span class="tl-txt">${body}</span>
+    </div>
+  `
+}
+
+function TimelineCard({ sessionId }) {
+  const [state, setState] = useState({ loading: true, events: [], hasMore: false, error: null })
+  const [filter, setFilter] = useState('all')
+
+  useEffect(() => {
+    let cancelled = false
+    setState({ loading: true, events: [], hasMore: false, error: null })
+    apiFetch('GET', `/api/sessions/${encodeURIComponent(sessionId)}/timeline`)
+      .then(data => {
+        if (cancelled) return
+        setState({ loading: false, events: data.events || [], hasMore: !!data.hasMore, error: null })
+      })
+      .catch(err => {
+        if (cancelled) return
+        setState({ loading: false, events: [], hasMore: false, error: err.message || 'failed to load timeline' })
+      })
+    return () => { cancelled = true }
+  }, [sessionId])
+
+  if (state.loading) {
+    return html`<${NoData} msg="loading timeline…"/>`
+  }
+  if (state.error) {
+    return html`<${NoData} msg=${`failed to load: ${state.error}`}/>`
+  }
+  if (state.events.length === 0) {
+    return html`<${NoData} msg="No commits, pushes, or prompts recorded for this session yet."/>`
+  }
+
+  const promptCount = state.events.filter(ev => ev.kind === 'prompt').length
+  const groups = groupTimelineEvents(state.events)
+
+  return html`
+    <div class="tl-filters">
+      ${TIMELINE_FILTERS.map(f => html`
+        <span key=${f.id} class=${`f ${filter === f.id ? 'on' : ''}`} onClick=${() => setFilter(f.id)}>${f.label}</span>
+      `)}
+    </div>
+    ${groups.map((g, gi) => {
+      const rows = g.rows.filter(ev => timelineRowMatchesFilter(ev, filter))
+      return html`
+        <div key=${gi}>
+          ${g.prompt && html`
+            <div class="tl-prompt">
+              <div class="lbl"><span class="time">${fmtTimelineTime(g.prompt.time)}</span>you asked</div>
+              <div class="txt">"${g.prompt.text}"</div>
+            </div>
+          `}
+          ${rows.length > 0 && html`
+            <div class="tl-group">
+              ${rows.map((ev, ri) => html`<${TimelineRow} key=${ri} ev=${ev}/>`)}
+            </div>
+          `}
+        </div>
+      `
+    })}
+    ${state.hasMore && html`
+      <div class="tl-more">showing the ${state.events.length} most recent events</div>
+    `}
+    ${promptCount === 0 && html`
+      <div class="tl-more" style="color:var(--muted)">no prompts on this transcript yet — showing git activity only</div>
+    `}
+  `
+}
+
 export function RightRail() {
   const { sessions } = menuModelSignal.value
   const selected = selectedIdSignal.value
@@ -193,6 +349,11 @@ export function RightRail() {
         ${panels.events && session.kind === 'watcher' && html`
           <${Card} title="EVENTS" testid="rail-card-events">
             <${NoData} msg="Watcher event stream not exposed via web API."/>
+          </${Card}>
+        `}
+        ${panels.timeline && html`
+          <${Card} title="TIMELINE" testid="rail-card-timeline">
+            <${TimelineCard} sessionId=${session.id}/>
           </${Card}>
         `}
         <div class="rail-add">

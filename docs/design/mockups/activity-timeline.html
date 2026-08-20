@@ -1,0 +1,303 @@
+<title>Activity Timeline</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --tn-bg:        #1a1b26;
+    --tn-panel:     #16161e;
+    --tn-panel-2:   #1f2030;
+    --tn-card:      #24283b;
+    --tn-card-hi:   #2a2f45;
+    --tn-fg:        #a9b1d6;
+    --tn-fg-hi:     #c0caf5;
+    --tn-muted:     #787c99;
+    --tn-muted-2:   #565f89;
+    --tn-border:    rgba(120, 124, 153, 0.22);
+    --tn-border-hi: rgba(120, 124, 153, 0.40);
+    --tn-blue:    #7aa2f7;
+    --tn-cyan:    #7dcfff;
+    --tn-green:   #73daca;
+    --tn-yellow:  #e0af68;
+    --tn-red:     #f7768e;
+    --tn-purple:  #bb9af7;
+
+    --bg: var(--tn-bg);
+    --panel: var(--tn-panel);
+    --panel-2: var(--tn-panel-2);
+    --card: var(--tn-card);
+    --card-hi: var(--tn-card-hi);
+    --border: var(--tn-border);
+    --border-hi: var(--tn-border-hi);
+    --text: var(--tn-fg);
+    --text-hi: var(--tn-fg-hi);
+    --text-dim: var(--tn-muted);
+    --muted: var(--tn-muted);
+    --muted-2: var(--tn-muted-2);
+    --accent: var(--tn-blue);
+    --accent-soft: rgba(122, 162, 247, 0.14);
+    --mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  /* Dark-first (mirrors agent-deck's own Tokyo Night default). */
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #e6e7ed; --panel: #d6d8df; --panel-2: #c8cad3;
+      --card: #ffffff; --card-hi: #f0f1f5;
+      --border: rgba(54, 60, 77, 0.18); --border-hi: rgba(54, 60, 77, 0.32);
+      --text: #363c4d; --text-hi: #1c2030; --text-dim: #5a6177;
+      --muted: #5a6177; --muted-2: #7d8497;
+      --accent: #2959aa; --accent-soft: rgba(41, 89, 170, 0.12);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #e6e7ed; --panel: #d6d8df; --panel-2: #c8cad3;
+    --card: #ffffff; --card-hi: #f0f1f5;
+    --border: rgba(54, 60, 77, 0.18); --border-hi: rgba(54, 60, 77, 0.32);
+    --text: #363c4d; --text-hi: #1c2030; --text-dim: #5a6177;
+    --muted: #5a6177; --muted-2: #7d8497;
+    --accent: #2959aa; --accent-soft: rgba(41, 89, 170, 0.12);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .mono { font-family: var(--mono); }
+
+  /* ============ APP CHROME (approximation of the real running UI —
+     the point here is the right rail, everything else is context) ============ */
+  .app {
+    display: grid;
+    grid-template-columns: 260px 1fr 300px;
+    grid-template-rows: 44px 1fr;
+    grid-template-areas: "top top top" "side main rail";
+    height: 100vh;
+    min-height: 640px;
+  }
+  .topbar {
+    grid-area: top;
+    display: flex; align-items: center; gap: 18px;
+    padding: 0 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .topbar .brand { color: var(--text-hi); font-weight: 600; }
+  .topbar .brand small { color: var(--muted); font-weight: 400; margin-left: 4px; }
+  .topbar .tabs { display: flex; gap: 4px; flex: 1; }
+  .topbar .tab { padding: 5px 10px; border-radius: 5px; color: var(--muted); }
+  .topbar .tab.active { color: var(--text-hi); background: var(--card-hi); }
+
+  .sidebar { grid-area: side; background: var(--panel); border-right: 1px solid var(--border); padding: 10px; overflow: auto; }
+  .side-head { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); padding: 4px 4px 10px; }
+  .sess { padding: 8px 10px; border-radius: 6px; margin-bottom: 6px; background: var(--panel-2); border: 1px solid transparent; }
+  .sess.selected { border-color: var(--accent); background: var(--card-hi); }
+  .sess-top { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-hi); font-weight: 500; }
+  .sess-top .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tn-green); flex: none; }
+  .sess-top .chip { margin-left: auto; font-size: 9.5px; color: var(--muted); background: var(--card); padding: 1px 6px; border-radius: 999px; }
+  .sess-meta { font-size: 10.5px; color: var(--muted); padding-left: 12px; margin-top: 3px; }
+
+  .main { grid-area: main; padding: 20px; color: var(--muted); font-size: 12px; display: flex; align-items: center; justify-content: center; text-align: center; }
+  .main .hint { max-width: 320px; line-height: 1.6; }
+  .main .hint b { color: var(--text-hi); }
+
+  /* ============ RIGHT RAIL — real classes/values copied from
+     app.css so this part isn't an approximation. ============ */
+  .rightrail { grid-area: rail; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  .rail-head { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .rail-head .t { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; color: var(--muted); }
+  .rail-head .spacer { flex: 1; }
+  .rail-body { flex: 1; overflow: auto; }
+
+  .card { margin: 10px 10px 0; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .card + .card { margin-top: 8px; }
+  .card-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; color: var(--muted); }
+  .card-head .name { flex: 1; color: var(--text-dim); }
+  .card-head .pill { font-family: var(--mono); font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--card); color: var(--muted); }
+  .card-body { padding: 8px 10px; }
+
+  .kv { display: flex; justify-content: space-between; padding: 3px 0; font-family: var(--mono); font-size: 11.5px; gap: 10px; }
+  .kv .k { color: var(--muted); flex-shrink: 0; }
+  .kv .v { color: var(--text); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kv .v.ok { color: var(--tn-green); }
+
+  .rail-add { margin: 8px 10px 10px; border: 1px dashed var(--border); border-radius: 6px; padding: 10px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .rail-add .opts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .rail-add .opt { padding: 3px 8px; border-radius: 3px; cursor: pointer; border: 1px solid var(--border); color: var(--text-dim); background: var(--panel); }
+  .rail-add .opt.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .rail-add .opt.new { position: relative; }
+  .rail-add .opt.new::after {
+    content: 'NEW'; position: absolute; top: -7px; right: -6px;
+    font-size: 8px; font-weight: 700; letter-spacing: 0.04em;
+    background: var(--tn-green); color: #08251f; padding: 1px 4px; border-radius: 999px;
+  }
+
+  /* ============ TIMELINE card content — condensed for the 300px rail ============ */
+  .tl-filters { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+  .tl-filters .f { font-family: var(--mono); font-size: 9.5px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+  .tl-filters .f.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+  .tl-prompt {
+    margin: 10px 0 6px;
+    padding: 6px 8px;
+    background: var(--card);
+    border-left: 2px solid var(--accent);
+    border-radius: 0 4px 4px 0;
+  }
+  .tl-prompt:first-child { margin-top: 0; }
+  .tl-prompt .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); font-weight: 700; margin-bottom: 3px; }
+  .tl-prompt .lbl .time { color: var(--muted-2); font-weight: 400; text-transform: none; margin-right: 5px; }
+  .tl-prompt .txt { font-size: 11px; color: var(--text-hi); font-style: italic; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+  .tl-group { padding-left: 10px; border-left: 1px dashed var(--border); margin-left: 3px; }
+  .tl-row {
+    display: flex; align-items: flex-start; gap: 6px;
+    padding: 3px 0;
+    font-size: 11px;
+  }
+  .tl-dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 4px; flex: none; border: 2px solid var(--muted-2); }
+  .tl-row.commit .tl-dot { border-color: var(--tn-green); background: var(--tn-green); }
+  .tl-row.push   .tl-dot { border-color: var(--tn-cyan); background: var(--tn-cyan); }
+  .tl-row.pr     .tl-dot { border-color: var(--tn-purple); background: var(--tn-purple); }
+  .tl-row.edit   .tl-dot { border-color: var(--tn-blue); }
+  .tl-txt { color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+  .tl-txt .hash { font-family: var(--mono); color: var(--tn-green); font-weight: 600; }
+  .tl-txt .path { font-family: var(--mono); color: var(--tn-blue); font-size: 10.5px; }
+  .tl-txt .push-lbl { font-family: var(--mono); color: var(--tn-cyan); font-weight: 600; }
+  .tl-txt .pr-lbl { font-family: var(--mono); color: var(--tn-purple); font-weight: 600; }
+
+  .tl-compact {
+    display: flex; align-items: center; gap: 6px;
+    margin: 8px 0; font-size: 9.5px; color: var(--tn-yellow);
+    font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .tl-compact::before, .tl-compact::after { content: ''; flex: 1; border-top: 1px dashed var(--tn-yellow); opacity: 0.5; }
+
+  .tl-more { text-align: center; padding: 8px 0 2px; }
+  .tl-more a { font-family: var(--mono); font-size: 10.5px; color: var(--accent); text-decoration: none; }
+
+  ::-webkit-scrollbar { width: 9px; }
+  ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+
+<div class="app">
+  <div class="topbar">
+    <span class="brand">agent-deck <small>web</small></span>
+    <div class="tabs">
+      <span class="tab">Command Center</span>
+      <span class="tab">Fleet 3</span>
+      <span class="tab active">Terminal</span>
+      <span class="tab">MCPs</span>
+      <span class="tab">Skills</span>
+      <span class="tab">Conductor</span>
+      <span class="tab">Watchers</span>
+      <span class="tab">Costs</span>
+    </div>
+    <span>default</span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="side-head"><span>SESSIONS 3</span><span>~$30.98 today</span></div>
+
+    <div class="sess">
+      <div class="sess-top"><span class="dot"></span>Easy8<span class="chip">Sonnet 5</span></div>
+      <div class="sess-meta">feature/sc-157870 · ~$6.08</div>
+    </div>
+    <div class="sess">
+      <div class="sess-top"><span class="dot"></span>Sharepoint<span class="chip">Sonnet 5</span></div>
+      <div class="sess-meta">feature/sc-157558 · ~$24.54</div>
+    </div>
+    <div class="sess selected">
+      <div class="sess-top"><span class="dot"></span>Prismatic security<span class="chip">Sonnet 5</span></div>
+      <div class="sess-meta">develop · ~$0.36</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="hint">Terminal pane renders here — unrelated to this mockup.<br>The point is the panel on the right →<br><b>"Timeline" added as a 7th toggle</b>, same picker as Overview/Usage/MCPs/etc, because it's the exact same <code class="mono">AVAIL_PANELS</code> array in RightRail.js.</div>
+  </div>
+
+  <div class="rightrail">
+    <div class="rail-head">
+      <span class="t">SESSION</span>
+      <div class="spacer"></div>
+      <span class="t" style="color:var(--text-hi)">Prismatic security</span>
+    </div>
+    <div class="rail-body">
+
+      <div class="card">
+        <div class="card-head"><span class="name">OVERVIEW</span><span class="pill">waiting</span></div>
+        <div class="card-body">
+          <div class="kv"><span class="k">tool</span><span class="v">claude</span></div>
+          <div class="kv"><span class="k">model</span><span class="v">Sonnet 5</span></div>
+          <div class="kv"><span class="k">branch</span><span class="v">develop</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><span class="name">TIMELINE</span><span class="pill">3 prompts</span></div>
+        <div class="card-body">
+          <div class="tl-filters">
+            <span class="f on">all</span>
+            <span class="f">git</span>
+            <span class="f">prompts</span>
+          </div>
+
+          <div class="tl-prompt">
+            <div class="lbl"><span class="time">15:55</span>you asked</div>
+            <div class="txt">"Es que en las sesiones donde estoy trabajando me aparece ruido de 30 behind base y 2 ahead of base…"</div>
+          </div>
+          <div class="tl-group">
+            <div class="tl-row push"><span class="tl-dot"></span><span class="tl-txt"><span class="push-lbl">↑</span> pushed to origin</span></div>
+            <div class="tl-row commit"><span class="tl-dot"></span><span class="tl-txt"><span class="hash">b2c31bba</span> Drop ahead/behind — not a real issue</span></div>
+            <div class="tl-row edit"><span class="tl-dot"></span><span class="tl-txt"><span class="path">Sidebar.js</span></span></div>
+            <div class="tl-row edit"><span class="tl-dot"></span><span class="tl-txt"><span class="path">health.go</span></span></div>
+          </div>
+
+          <div class="tl-compact">compacted · 14:58</div>
+
+          <div class="tl-prompt">
+            <div class="lbl"><span class="time">14:31</span>you asked</div>
+            <div class="txt">"Ok si ya veo el label, aunque ahorita hice un commit y push y sigue diciendo uncommitted…"</div>
+          </div>
+          <div class="tl-group">
+            <div class="tl-row push"><span class="tl-dot"></span><span class="tl-txt"><span class="push-lbl">↑</span> pushed to origin</span></div>
+            <div class="tl-row commit"><span class="tl-dot"></span><span class="tl-txt"><span class="hash">bcbcd7f4</span> Fix untracked-files false-positive</span></div>
+            <div class="tl-row edit"><span class="tl-dot"></span><span class="tl-txt"><span class="path">handlers_health_test.go</span></span></div>
+          </div>
+
+          <div class="tl-more"><a href="#">↓ 1 more prompt, view full timeline</a></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><span class="name">USAGE</span></div>
+        <div class="card-body">
+          <div class="kv"><span class="k">cost</span><span class="v ok">$0.36</span></div>
+          <div class="kv"><span class="k">tokens</span><span class="v">7.1k</span></div>
+        </div>
+      </div>
+
+      <div class="rail-add">
+        <div>Right-rail panels</div>
+        <div class="opts">
+          <span class="opt on">Overview</span>
+          <span class="opt on">Usage &amp; activity</span>
+          <span class="opt">MCPs</span>
+          <span class="opt">Skills</span>
+          <span class="opt">Children (conductor)</span>
+          <span class="opt">Events (watcher)</span>
+          <span class="opt on new">Timeline</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>

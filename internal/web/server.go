@@ -283,6 +283,7 @@ func NewServer(cfg Config) *Server {
 
 	mux.HandleFunc("/api/analytics/context/batch", s.handleContextBatch)
 	mux.HandleFunc("/api/sessions/health/batch", s.handleSessionHealthBatch)
+	mux.HandleFunc("/api/sessions/{id}/timeline", s.handleSessionTimeline)
 
 	mux.HandleFunc("/api/system/stats", s.handleSystemStats)
 
