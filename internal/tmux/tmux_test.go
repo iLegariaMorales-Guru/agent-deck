@@ -2494,10 +2494,12 @@ func TestSession_MouseMode_EnableMouseMode_Disabled_Integration(t *testing.T) {
 }
 
 // TestSession_MultiClientSizePolicy_Integration verifies that on session
-// creation agent-deck pins window-size=largest (session option) and
-// aggressive-resize=on (window option). This is the fix for the dots-in-
-// window symptom that arose when web's xterm.js control client and a native
-// `tmux attach` client had different geometries — see tmux issue #2594.
+// creation agent-deck pins window-size=latest (session option) and
+// aggressive-resize=on (window option). `latest` follows whichever client
+// sent input most recently, so a narrower client (typically the phone over
+// Tailscale) gets full width while it's actively driving the session,
+// instead of always being column-cropped to a wider, merely-idle client —
+// see tmux issue #2594 for the underlying window-size semantics.
 func TestSession_MultiClientSizePolicy_Integration(t *testing.T) {
 	if os.Getenv("AGENTDECK_TEST_PROFILE") == "" {
 		t.Skip("Skipping tmux integration test - no test profile")
@@ -2512,8 +2514,8 @@ func TestSession_MultiClientSizePolicy_Integration(t *testing.T) {
 
 	winSize, err := exec.Command("tmux", "show-options", "-t", s.Name, "-A", "-v", "window-size").Output()
 	require.NoError(t, err)
-	assert.Equal(t, "largest", strings.TrimSpace(string(winSize)),
-		"new sessions must pin window-size=largest so a smaller client cannot drag the window down (tmux #2594)")
+	assert.Equal(t, "latest", strings.TrimSpace(string(winSize)),
+		"new sessions must pin window-size=latest so the phone gets full width while active (tmux #2594)")
 
 	aggResize, err := exec.Command("tmux", "show-options", "-w", "-t", s.Name+":0", "-A", "-v", "aggressive-resize").Output()
 	require.NoError(t, err)

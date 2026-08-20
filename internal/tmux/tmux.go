@@ -2449,15 +2449,23 @@ func (s *Session) Start(command string) error {
 	startArgs = append(startArgs, gatedTmuxKeyOptionArgs(s.Name, s.OptionOverrides)...)
 	// Multi-client size negotiation. Web's xterm.js connects via a tmux -C
 	// control client (controlpipe.go) at the same time as native `tmux attach`
-	// clients (Ghostty, iTerm). Default `window-size latest` makes the window
-	// flip to whichever client most recently sent input, so larger clients see
-	// dot-filled void cells and smaller clients clip. `largest` keeps the
-	// window sized to the biggest client; `aggressive-resize` only resizes
-	// windows that are actively viewed (avoids cross-window resize storms).
-	// See tmux(1) "window-size" / "aggressive-resize" and tmux issue #2594.
+	// clients (Ghostty, iTerm). `largest` keeps the window sized to the
+	// biggest client, so a narrower client (typically the phone, over
+	// Tailscale) never rewraps to its own width -- lines just get
+	// column-cropped past its width, reading as chunks of text missing.
+	// Switched to `latest`: the window follows whichever client sent input most
+	// recently, so the phone gets full width while it's actively being
+	// used. Tradeoff (why `largest` was picked originally, tmux issue
+	// #2594): while the phone is the most-recent client, the *other*,
+	// larger client (local terminal) is shown dot-filled void cells for
+	// the space that no longer fits -- accepted here since the local
+	// terminal is only glanced at while the phone briefly drives a resize,
+	// not permanently corrupted. `aggressive-resize` only resizes windows
+	// that are actively viewed (avoids cross-window resize storms).
+	// See tmux(1) "window-size" / "aggressive-resize".
 	// Both are gated through OptionOverrides so users can opt out.
 	if _, ok := s.OptionOverrides["window-size"]; !ok {
-		startArgs = append(startArgs, ";", "set-option", "-t", s.Name, "window-size", "largest")
+		startArgs = append(startArgs, ";", "set-option", "-t", s.Name, "window-size", "latest")
 	}
 	if _, ok := s.OptionOverrides["aggressive-resize"]; !ok {
 		startArgs = append(startArgs, ";", "set-window-option", "-t", s.Name, "aggressive-resize", "on")
