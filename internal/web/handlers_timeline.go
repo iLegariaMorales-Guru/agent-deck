@@ -109,12 +109,19 @@ func buildSessionTimeline(ms *MenuSession) sessionTimelineResponse {
 		// "git had more than 30" instead of "the merged feed had more than
 		// maxTimelineEvents", which is the honest thing to report truncation
 		// against.
-		for _, c := range git.RecentCommits(workDir, branch, maxTimelineEvents) {
+		//
+		// ms.CreatedAt bounds both calls: without it, a session's timeline
+		// showed the branch's ENTIRE commit/push history, including
+		// everything made before this session (or its worktree) ever
+		// existed — a real false-positive hit live on every session
+		// checked, since a feature branch is almost never created from a
+		// completely empty history.
+		for _, c := range git.RecentCommits(workDir, branch, maxTimelineEvents, ms.CreatedAt) {
 			events = append(events, timelineEventOut{
 				Kind: "commit", Time: c.Time, Text: c.Subject, Hash: c.Hash, Files: c.FilesChanged,
 			})
 		}
-		for _, p := range git.RecentPushes(workDir, branch, maxTimelineEvents) {
+		for _, p := range git.RecentPushes(workDir, branch, maxTimelineEvents, ms.CreatedAt) {
 			events = append(events, timelineEventOut{Kind: "push", Time: p.Time, Hash: p.Hash})
 		}
 	}

@@ -5,12 +5,32 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/asheshgoplani/agent-deck/internal/session"
 )
+
+// commitAtDate makes a commit in repo with an explicit author/committer
+// date (RFC3339), mirroring internal/git/timeline_test.go's helper of the
+// same name — needed here too to test the CreatedAt cutoff without racing
+// real wall-clock time.
+func commitAtDate(t *testing.T, repo, date, msg string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(repo, "f.txt"), []byte(msg), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runGitCmd(t, repo, "add", ".")
+	cmd := exec.Command("git", "commit", "-m", msg)
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("commit at %s: %v\n%s", date, err, out)
+	}
+}
 
 // writeTimelineFixtureJSONL writes raw JSONL lines at the path Claude would
 // use for (projectPath, claudeSessionID) under configDir, mirroring
@@ -77,6 +97,43 @@ func TestSessionTimeline_GitCommitsAndPushes(t *testing.T) {
 	}
 	if !sawPush {
 		t.Errorf("expected a push event, got %+v", resp.Events)
+	}
+}
+
+// TestSessionTimeline_ExcludesCommitsBeforeSessionCreation is the
+// end-to-end regression test for a real bug hit live: every session's
+// timeline showed the branch's entire commit history, including commits
+// made long before that particular session existed. ms.CreatedAt is the
+// cutoff (see buildSessionTimeline).
+func TestSessionTimeline_ExcludesCommitsBeforeSessionCreation(t *testing.T) {
+	repo := t.TempDir()
+	runGitCmd(t, repo, "-c", "init.defaultBranch=main", "init")
+	runGitCmd(t, repo, "config", "user.email", "test@test.com")
+	runGitCmd(t, repo, "config", "user.name", "Test User")
+
+	commitAtDate(t, repo, "2020-01-01T00:00:00Z", "old commit, before the session existed")
+	commitAtDate(t, repo, "2026-06-01T00:00:00Z", "new commit, made during the session")
+
+	sessionCreatedAt, err := time.Parse(time.RFC3339, "2026-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	ms := &MenuSession{ID: "dated-sess", Tool: "claude", ProjectPath: repo, Branch: "main", CreatedAt: sessionCreatedAt}
+	srv := newTimelineServer(t, ms)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions/dated-sess/timeline", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	var resp sessionTimelineResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Events) != 1 {
+		t.Fatalf("expected only the post-creation commit, got %+v", resp.Events)
+	}
+	if resp.Events[0].Text != "new commit, made during the session" {
+		t.Errorf("Text = %q, want only the commit made during the session", resp.Events[0].Text)
 	}
 }
 

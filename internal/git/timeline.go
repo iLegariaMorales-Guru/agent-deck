@@ -31,13 +31,20 @@ var commitBlockRE = regexp.MustCompile(`(?m)^@@`)
 var shortstatRE = regexp.MustCompile(`(\d+) files? changed`)
 
 // RecentCommits returns up to limit most-recent commits reachable from
-// branchName in dir (or HEAD if branchName is empty), newest first. Local
-// `git log` only — no network, same "safe to call on every open" cost
-// profile as CheckWorktreeHealth. Returns nil (not an error) for a dir
-// that isn't a git repo, a branch that doesn't exist, or any other git
-// failure — callers treat "nothing to show" as the normal empty case,
-// same convention as WorktreeHealth's zero value.
-func RecentCommits(dir, branchName string, limit int) []CommitInfo {
+// branchName in dir (or HEAD if branchName is empty), newest first, made at
+// or after since (pass the zero time.Time for no cutoff). Local `git log`
+// only — no network, same "safe to call on every open" cost profile as
+// CheckWorktreeHealth. Returns nil (not an error) for a dir that isn't a
+// git repo, a branch that doesn't exist, or any other git failure —
+// callers treat "nothing to show" as the normal empty case, same
+// convention as WorktreeHealth's zero value.
+//
+// since matters more than it looks: without it, a session's timeline shows
+// the branch's ENTIRE commit history, including commits made long before
+// that session (or its worktree) ever existed — a real false-positive a
+// user hit live on every session they checked. Callers pass the session's
+// own creation time here (see handlers_timeline.go).
+func RecentCommits(dir, branchName string, limit int, since time.Time) []CommitInfo {
 	ref := branchName
 	if ref == "" {
 		ref = "HEAD"
@@ -45,9 +52,12 @@ func RecentCommits(dir, branchName string, limit int) []CommitInfo {
 	if limit <= 0 {
 		limit = 20
 	}
-	out, err := exec.Command("git", "-C", dir, "log", ref,
-		"-n", strconv.Itoa(limit),
-		"--format=@@%h\x1f%ct\x1f%s", "--shortstat").Output()
+	args := []string{"-C", dir, "log", ref, "-n", strconv.Itoa(limit),
+		"--format=@@%h\x1f%ct\x1f%s", "--shortstat"}
+	if !since.IsZero() {
+		args = append(args, "--since="+since.Format(time.RFC3339))
+	}
+	out, err := exec.Command("git", args...).Output()
 	if err != nil {
 		return nil
 	}
@@ -111,11 +121,14 @@ type PushInfo struct {
 const pushReflogSubject = "update by push"
 
 // RecentPushes returns up to limit most-recent pushes of branchName's
-// upstream, newest first. Returns nil when branchName has no configured
+// upstream, newest first, at or after since (pass the zero time.Time for
+// no cutoff — see RecentCommits' since doc, same reasoning applies here:
+// an old branch's push history predates a given session just as easily as
+// its commit history does). Returns nil when branchName has no configured
 // upstream, dir isn't a git repo, or there's no reflog for it yet (a
 // remote-tracking ref only grows a reflog once something has actually
 // updated it locally).
-func RecentPushes(dir, branchName string, limit int) []PushInfo {
+func RecentPushes(dir, branchName string, limit int, since time.Time) []PushInfo {
 	if branchName == "" {
 		return nil
 	}
@@ -147,7 +160,11 @@ func RecentPushes(dir, branchName string, limit int) []PushInfo {
 		if err != nil {
 			continue
 		}
-		pushes = append(pushes, PushInfo{Hash: fields[0], Time: time.Unix(epoch, 0)})
+		t := time.Unix(epoch, 0)
+		if !since.IsZero() && t.Before(since) {
+			continue
+		}
+		pushes = append(pushes, PushInfo{Hash: fields[0], Time: t})
 		if len(pushes) >= limit {
 			break
 		}
