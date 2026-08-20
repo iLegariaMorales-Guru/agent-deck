@@ -27,6 +27,14 @@ export const settingsSignal = signal(null)
 // Auth token for API calls (set by app.js after reading from URL)
 export const authTokenSignal = signal('')
 
+// Flips true the moment any /api/ call comes back 401 (see api.js). App.js
+// renders LoginScreen instead of the app shell while this is true — the
+// fix for iOS Home Screen web apps that can't rely on a token shared via
+// localStorage/URL with the Safari tab they were installed from: each
+// browser context logs in for itself via POST /api/login, which sets a
+// session cookie scoped to that context.
+export const authRequiredSignal = signal(false)
+
 // Per-session costs from GET /api/costs/batch (map of sessionId -> costUSD)
 export const sessionCostsSignal = signal({})
 

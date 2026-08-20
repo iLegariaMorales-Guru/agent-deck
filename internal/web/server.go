@@ -171,6 +171,10 @@ type Server struct {
 	remoteFleet     RemoteFleetLoader
 	mutationLimiter *rate.Limiter
 
+	// sessionSecret signs the cookie issued by POST /api/login. In-memory
+	// only (see session_cookie.go) — a restart invalidates sessions.
+	sessionSecret []byte
+
 	// hookStatusLoader returns the latest hook payload for every instance
 	// whose hook file is present on disk. Defaults to defaultLoadHookStatuses
 	// (which reads ~/.agent-deck/hooks/) but is injectable for tests.
@@ -201,6 +205,7 @@ func NewServer(cfg Config) *Server {
 		menuSubscribers:  make(map[chan struct{}]struct{}),
 		mutationLimiter:  mutationLimiter,
 		hookStatusLoader: defaultLoadHookStatuses,
+		sessionSecret:    newSessionSecret(),
 	}
 	if s.remoteFleet == nil {
 		s.remoteFleet = session.NewRemoteFleetScanner()
@@ -241,6 +246,8 @@ func NewServer(cfg Config) *Server {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	})
+	mux.HandleFunc("POST /api/login", s.handleLogin)
+	mux.HandleFunc("POST /api/logout", s.handleLogout)
 	mux.HandleFunc("/api/menu", s.handleMenu)
 	mux.HandleFunc("/api/session/", s.handleSessionByID)
 	mux.HandleFunc("/api/sessions", s.handleSessionsCollection)

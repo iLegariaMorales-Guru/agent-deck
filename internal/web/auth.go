@@ -51,6 +51,17 @@ func (s *Server) authorize(r *http.Request, allowQueryToken bool) bool {
 		return true
 	}
 
+	// Session cookie, issued by POST /api/login (see session_cookie.go). This
+	// is what lets a browser context (a Safari tab, or a standalone iOS
+	// Home Screen web app that can't reliably share localStorage/URL state
+	// with that tab) authenticate itself directly, without ever putting the
+	// token in a URL. Safe alongside CSRF: mutating requests still go
+	// through csrfProtect's Origin/Referer check regardless of how they
+	// authorized.
+	if s.checkSessionCookie(r) {
+		return true
+	}
+
 	return false
 }
 
