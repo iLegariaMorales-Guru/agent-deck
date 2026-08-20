@@ -46,7 +46,7 @@ persist(railSignal, 'agentdeck.rail')
 
 // Right rail panel toggles (which cards are shown).
 export const rightRailPanelsSignal = signal(loadJSON('agentdeck.rightRailPanels', {
-  overview: true, usage: true, mcps: true, skills: true, children: true, events: true,
+  overview: true, usage: true, mcps: true, skills: true, children: true, events: true, timeline: true,
 }))
 persist(rightRailPanelsSignal, 'agentdeck.rightRailPanels')
 

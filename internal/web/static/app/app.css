@@ -619,6 +619,48 @@ body[data-rail="hidden"] .rightrail { display: none; }
 .rail-add .opt:hover { color: var(--accent); border-color: var(--accent); }
 .rail-add .opt.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 
+/* Timeline card (RightRail.js TimelineCard) — condensed for the ~280px
+   rail. See docs/design/mockups/activity-timeline.html for the full-size
+   version this was adapted from. */
+.tl-filters { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+.tl-filters .f { font-family: var(--mono); font-size: 9.5px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); cursor: pointer; }
+.tl-filters .f.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+.tl-prompt {
+  margin: 10px 0 6px;
+  padding: 6px 8px;
+  background: var(--card);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 4px 4px 0;
+}
+.tl-prompt:first-child { margin-top: 0; }
+.tl-prompt .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); font-weight: 700; margin-bottom: 3px; }
+.tl-prompt .time { color: var(--muted-2); font-weight: 400; text-transform: none; margin-right: 5px; font-family: var(--mono); }
+.tl-prompt .txt { font-size: 11px; color: var(--text-hi); font-style: italic; line-height: 1.4; overflow-wrap: anywhere; }
+
+.tl-group { padding-left: 10px; border-left: 1px dashed var(--border); margin-left: 3px; }
+.tl-row { display: flex; align-items: flex-start; gap: 6px; padding: 3px 0; font-size: 11px; }
+.tl-dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 4px; flex: none; border: 2px solid var(--muted-2); }
+.tl-row.commit .tl-dot { border-color: var(--tn-green); background: var(--tn-green); }
+.tl-row.push   .tl-dot { border-color: var(--tn-cyan); background: var(--tn-cyan); }
+.tl-row.pr     .tl-dot { border-color: var(--tn-purple); background: var(--tn-purple); }
+.tl-row.edit   .tl-dot { border-color: var(--tn-blue); }
+.tl-txt { color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.tl-txt .hash { font-family: var(--mono); color: var(--tn-green); font-weight: 600; }
+.tl-txt .path { font-family: var(--mono); color: var(--tn-blue); font-size: 10.5px; }
+.tl-txt .push-lbl { font-family: var(--mono); color: var(--tn-cyan); font-weight: 600; }
+.tl-txt .pr-lbl { font-family: var(--mono); color: var(--tn-purple); font-weight: 600; }
+.tl-filecount { font-size: 10px; color: var(--muted); background: var(--card-hi); padding: 0 5px; border-radius: 999px; }
+
+.tl-compact {
+  display: flex; align-items: center; gap: 6px;
+  margin: 8px 0; font-size: 9.5px; color: var(--tn-yellow);
+  font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.04em;
+}
+.tl-compact::before, .tl-compact::after { content: ''; flex: 1; border-top: 1px dashed var(--tn-yellow); opacity: 0.5; }
+
+.tl-more { text-align: center; padding: 8px 4px 2px; font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
 /* sparkline */
 .spark {
   display: flex; align-items: flex-end; gap: 2px;
