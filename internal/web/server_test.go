@@ -162,7 +162,7 @@ func TestServiceWorkerServed(t *testing.T) {
 	if !strings.Contains(rr.Body.String(), "CACHE_VERSION") {
 		t.Fatalf("expected service worker payload, got: %s", rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), `agentdeck-shell-v12`) {
+	if !strings.Contains(rr.Body.String(), `agentdeck-shell-v14`) {
 		t.Fatalf("expected bumped service worker cache version, got: %s", rr.Body.String())
 	}
 }

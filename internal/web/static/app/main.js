@@ -3,6 +3,7 @@
 import { render, html } from 'htm/preact'
 import { App } from './App.js'
 import { apiFetch } from './api.js'
+import { initPush } from './push.js'
 import {
   sessionsSignal,
   sessionsLoadedSignal,
@@ -14,13 +15,40 @@ import {
 import { addToast } from './Toast.js'
 
 // ---------- Auth token extraction ----------
+//
+// The token is persisted to localStorage (not just kept in-memory) so an
+// "Add to Home Screen" icon keeps working. iOS captures whatever URL the
+// tab is showing *at the moment the share sheet opens*, and the token gets
+// stripped from that URL within a tick of page load (below) -- so a
+// bookmarked/home-screen relaunch would otherwise always hit a bare `/`
+// with no token, 401 on every /api/ call, and render as a silently empty
+// session list (no visible error; see handlers auth). Storing it here means
+// a URL with `?token=` only needs to be opened once, from any entry point.
+
+const AUTH_TOKEN_STORAGE_KEY = 'agentdeck.token'
 
 ;(function extractAuthToken() {
   const params = new URLSearchParams(window.location.search)
   const token = params.get('token')
-  if (!token) return
+
+  if (!token) {
+    // No token in this URL -- fall back to a previously saved one so a
+    // home-screen icon or bookmark opened without ?token= still works.
+    try {
+      const stored = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
+      if (stored) authTokenSignal.value = stored
+    } catch (_) {
+      // localStorage unavailable (private mode); nothing to fall back to
+    }
+    return
+  }
 
   authTokenSignal.value = token
+  try {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token)
+  } catch (_) {
+    // private mode; token still works for this tab, just won't survive a relaunch
+  }
 
   // Strip token from URL so it isn't logged by the server or leaked via Referer header
   params.delete('token')
@@ -201,5 +229,6 @@ if (root) {
   applyRouteSelection()
   loadMenu()
   registerServiceWorker()
+  initPush()
   render(html`<${App} />`, root)
 }
