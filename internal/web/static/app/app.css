@@ -753,6 +753,17 @@ body[data-rail="hidden"] .rightrail { display: none; }
 }
 .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); outline: 0; }
 
+/* ---------- login screen ---------- */
+/* Full-bleed replacement for the app shell (not an overlay on top of it —
+   there's nothing behind it to dim, the shell hasn't loaded any data yet). */
+.login-screen {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.login-card { width: min(360px, 100%); }
+.login-error { font-family: var(--mono); font-size: 12px; color: var(--tn-red); }
+
 .seg-row { display: flex; gap: 2px; padding: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); width: fit-content; }
 .seg-btn { padding: 5px 12px; border-radius: 4px; background: transparent; border: 0; color: var(--text-dim); font-family: var(--mono); font-size: 11.5px; cursor: pointer; }
 .seg-btn:hover { color: var(--text); }

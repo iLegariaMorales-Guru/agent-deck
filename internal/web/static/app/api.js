@@ -1,6 +1,6 @@
 // api.js -- Shared fetch helper for mutation API calls
 // Applies auth token from state.js and handles JSON parsing uniformly.
-import { authTokenSignal } from './state.js'
+import { authTokenSignal, authRequiredSignal } from './state.js'
 import { addToast } from './Toast.js'
 
 // authHeaders returns the headers every /api/ request must carry.
@@ -33,6 +33,14 @@ export async function apiFetch(method, path, body) {
     addToast(msg)
     throw new Error(msg)
   }
+  if (res.status === 401) {
+    // No valid bearer token AND no valid session cookie. Show the login
+    // screen instead of toasting every background poll into oblivion.
+    authRequiredSignal.value = true
+    throw new Error('unauthorized')
+  }
+  authRequiredSignal.value = false
+
   const data = await res.json()
   if (!res.ok) {
     const msg = data?.error?.message || res.statusText

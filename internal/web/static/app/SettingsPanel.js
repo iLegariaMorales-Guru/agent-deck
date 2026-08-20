@@ -82,6 +82,15 @@ export function SettingsPanel() {
       <div style="font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 8px;">
         Edit <code>~/.config/agent-deck/config.toml</code> (<code>[ui] hidden_tools</code>, <code>[web] trusted_domains</code>) or use TUI Settings → Visible tools…
       </div>
+      <button
+        class="btn ghost"
+        style="margin-top: 8px; align-self: flex-start;"
+        onClick=${() => {
+          fetch('/api/logout', { method: 'POST', headers: authHeaders() }).finally(() => window.location.reload())
+        }}
+      >
+        Log out of this browser
+      </button>
     </div>
   `
 }

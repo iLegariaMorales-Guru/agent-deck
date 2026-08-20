@@ -4,7 +4,8 @@
 import { html } from 'htm/preact'
 import { useEffect } from 'preact/hooks'
 import { AppShell } from './AppShell.js'
-import { selectedIdSignal } from './state.js'
+import { LoginScreen } from './LoginScreen.js'
+import { selectedIdSignal, authRequiredSignal } from './state.js'
 
 export function App() {
   // Route sync: update selectedIdSignal when browser navigates back/forward
@@ -40,6 +41,10 @@ export function App() {
       window.history.pushState(null, '', targetPath)
     }
   }, [selectedIdSignal.value])
+
+  if (authRequiredSignal.value) {
+    return html`<${LoginScreen} />`
+  }
 
   return html`
     <${AppShell} />
