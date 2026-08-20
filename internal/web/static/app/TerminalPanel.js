@@ -84,6 +84,9 @@ export function TerminalPanel() {
   // banner clears but ctx.wsReconnectEnabled is stuck at false from the
   // earlier TMUX_SESSION_NOT_FOUND, and the terminal never reattaches.
   const [reconnectKey, setReconnectKey] = useState(0)
+  // Read once at mount -- device class doesn't change mid-session. Needed
+  // in both the connect effect (font size) and the render below (padding).
+  const mobile = isMobileDevice()
 
   // Signal vanilla app.js to suppress its terminal path while TerminalPanel is mounted
   useEffect(() => {
@@ -128,18 +131,22 @@ export function TerminalPanel() {
 
     const container = containerRef.current
     const token = authTokenSignal.value
-    const mobile = isMobileDevice()
     // macOS gates the Cmd/Option line-editing remaps (terminalKeymap); other
     // platforms keep their native Home/End/Ctrl-arrow behavior untouched.
     const isMac = /mac/i.test(navigator.platform || '') || /mac/i.test(navigator.userAgent || '')
 
     // Create Terminal
+    // Mobile: smaller font buys back real columns from the narrower
+    // viewport -- otherwise every session shows fewer cols than desktop
+    // and wide output (long paths, tables) truncates more aggressively
+    // (terminal doesn't horizontal-scroll; a PTY line is exactly `cols`
+    // wide, so lost cols is lost content, not a scrollbar bug).
     const terminal = new Terminal({
       convertEol: false,
       cursorBlink: !mobile,
       disableStdin: false,
       fontFamily: 'IBM Plex Mono, Menlo, Consolas, monospace',
-      fontSize: 13,
+      fontSize: mobile ? 11 : 13,
       // Issue #1682: replaces xterm's built-in OSC-8 activate handler, which
       // confirms on every link. Ours skips the confirm for `[web]
       // trusted_domains` hosts and honors `confirm_link_open`.
@@ -455,7 +462,10 @@ export function TerminalPanel() {
         <span class="tpath">session · ${sessionId}</span>
         <span style="flex: 1;"/>
       </div>
-      <div style="flex: 1; min-height: 0; min-width: 0; overflow: hidden; padding: 14px 16px;">
+      <div style=${{
+        flex: '1', minHeight: '0', minWidth: '0', overflow: 'hidden',
+        padding: mobile ? '6px 4px' : '14px 16px',
+      }}>
         <div ref=${containerRef} style="height: 100%; width: 100%; overflow: hidden;"/>
       </div>
       ${fatalError && html`
