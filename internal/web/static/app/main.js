@@ -203,6 +203,105 @@ export function applyRouteSelection() {
   // Don't force-clear selection at boot if no /s/ path; leave it null
 }
 
+// ---------- Mobile keyboard viewport fix ----------
+//
+// iOS's on-screen keyboard doesn't shrink `100dvh` -- dvh only tracks the
+// Safari toolbar collapsing/expanding, not the IME. Without this, `.app`
+// (see app.css) stays full-height under the keyboard, and anything
+// anchored near the bottom of the grid (terminal input line, a composer)
+// keeps rendering behind it -- you type and see nothing. VisualViewport
+// reports the actually-visible area, so mirror it into a CSS var .app can
+// size itself to. This is only a best-effort first line of defense: iOS
+// is documented to under-report or skip this resize event specifically
+// for standalone/Home-Screen-installed web apps (this app's own install
+// mode), so it alone recovers "a little" of the space, not all of it --
+// installKeyboardScrollFix below is the mechanism that actually closes
+// the gap regardless of whether this number is trustworthy. No-op where
+// VisualViewport is unsupported (--app-vh stays unset, .app's `var(...,
+// 100dvh)` fallback in app.css applies) -- desktop browsers included.
+function installKeyboardViewportFix() {
+  const vv = window.visualViewport
+  if (!vv) return
+  const root = document.documentElement
+  function sync() {
+    root.style.setProperty('--app-vh', vv.height + 'px')
+  }
+  vv.addEventListener('resize', sync)
+  sync()
+}
+
+// ---------- Mobile keyboard scroll-into-view fix ----------
+//
+// The fix above shrinks .app when VisualViewport is trustworthy, but this
+// app deliberately keeps #app-root pinned with `position: fixed` and
+// `body { overflow: hidden }` so nothing scrolls at rest -- every pane
+// scrolls internally instead (see app.css). That also means there is
+// normally nothing for the browser's native "scroll the focused input
+// above the keyboard" behavior to move: no overflow exists to scroll.
+//
+// Rather than compute the keyboard's exact pixel height ourselves (the
+// one number VisualViewport won't reliably give us in this app's install
+// mode), open up real, standards-compliant scroll room ONLY while a text
+// field is focused: drop #app-root out of `fixed` into normal document
+// flow and grow a spacer below it, so the document genuinely has
+// somewhere to scroll to. Then let the browser's native `scrollIntoView`
+// -- which reasons from actual layout geometry, not our guess -- bring
+// the focused field above the keyboard. Reverts to the pinned, no-scroll
+// state on blur, so nothing changes for the at-rest (no keyboard) case.
+const APP_ROOT_FIXED_CSS = 'position:fixed;inset:0;z-index:10;'
+const APP_ROOT_FLOW_CSS = 'position:relative;z-index:10;'
+// Generous worst-case iPhone keyboard height (incl. the QuickType/predictive
+// bar) -- doesn't need to be exact, scrollIntoView only needs "enough room
+// exists below the field," not a precise number.
+const KEYBOARD_SCROLL_SPACER_HEIGHT = '340px'
+
+function isTextEntryTarget(el) {
+  return !!el && !!el.tagName &&
+    (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable)
+}
+
+function installKeyboardScrollFix(root) {
+  if (!root) return
+  let spacer = null
+  function ensureSpacer() {
+    if (!spacer) {
+      spacer = document.createElement('div')
+      spacer.setAttribute('aria-hidden', 'true')
+      spacer.style.cssText = 'height:0;flex:none;'
+      document.body.appendChild(spacer)
+    }
+    return spacer
+  }
+
+  document.addEventListener('focusin', (e) => {
+    if (!isTextEntryTarget(e.target)) return
+    root.style.cssText = APP_ROOT_FLOW_CSS
+    document.body.style.overflowY = 'auto'
+    ensureSpacer().style.height = KEYBOARD_SCROLL_SPACER_HEIGHT
+    // iOS animates the keyboard in over ~250ms; scrolling before it
+    // settles measures against the pre-keyboard layout and undershoots.
+    setTimeout(() => {
+      if (document.activeElement === e.target) {
+        e.target.scrollIntoView({ block: 'end', behavior: 'smooth' })
+      }
+    }, 300)
+  }, { capture: true })
+
+  document.addEventListener('focusout', (e) => {
+    if (!isTextEntryTarget(e.target)) return
+    // Deferred + re-checked: a focus hop between two text fields (e.g. tab
+    // order in a dialog) fires focusout/focusin back-to-back -- don't
+    // tear the flow state down mid-hop only to rebuild it immediately.
+    setTimeout(() => {
+      if (isTextEntryTarget(document.activeElement)) return
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      if (spacer) spacer.style.height = '0'
+      document.body.style.overflowY = ''
+      root.style.cssText = APP_ROOT_FIXED_CSS
+    }, 50)
+  }, { capture: true })
+}
+
 // ---------- Service worker registration ----------
 
 export function registerServiceWorker() {
@@ -225,9 +324,11 @@ export function registerServiceWorker() {
 
 const root = document.getElementById('app-root')
 if (root) {
-  root.style.cssText = 'position:fixed;inset:0;z-index:10;'
+  root.style.cssText = APP_ROOT_FIXED_CSS
   applyRouteSelection()
   loadMenu()
+  installKeyboardViewportFix()
+  installKeyboardScrollFix(root)
   registerServiceWorker()
   initPush()
   render(html`<${App} />`, root)

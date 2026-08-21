@@ -39,6 +39,23 @@ button { font: inherit; color: inherit; }
      tracks the *actual* visible viewport instead; browsers that don't
      support it just keep the 100vh above. */
   height: 100dvh;
+  /* Neither vh nor dvh shrinks for the on-screen keyboard on iOS -- dvh
+     only tracks the toolbar, not the IME. Without this, typing anywhere
+     near the bottom of the grid (terminal input, composer) types behind
+     the keyboard, invisible. main.js measures the real visible area with
+     the VisualViewport API and writes it here; --app-vh is unset (falling
+     back to the dvh above) on browsers/desktop where that API is absent
+     or a keyboard isn't in play. */
+  height: var(--app-vh, 100dvh);
+  /* NOTE: an earlier version of this rule also set
+     `top: var(--app-vh-top, 0px); position: relative;` to compensate for
+     iOS shifting the visual viewport down on focus. That accidentally
+     turned the whole grid into an overflowing, draggable box (iOS mis-
+     handles `position: fixed` overflow during keyboard-driven scroll) --
+     confusing, uncontrolled, and not what actually fixes the keyboard
+     covering the input. The real fix is the deliberate, scoped
+     fixed<->flow toggle in main.js's installKeyboardScrollFix -- see
+     there for why. */
 }
 body[data-rail="hidden"] .app { grid-template-columns: var(--sidebar-w) 1fr 0; }
 body[data-rail="hidden"] .rightrail { display: none; }
