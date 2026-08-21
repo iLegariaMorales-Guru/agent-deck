@@ -30,7 +30,7 @@ export function LoginScreen() {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
-        setError(data?.error?.message || 'Incorrect access token')
+        setError(data?.error?.message || 'Incorrect access token or PIN')
         setBusy(false)
         return
       }
@@ -53,13 +53,13 @@ export function LoginScreen() {
         </div>
         <div class="db">
           <div class="field">
-            <label for="login-token">Access token</label>
+            <label for="login-token">Access token or PIN</label>
             <input
               id="login-token"
               type="password"
               autofocus
               autocomplete="current-password"
-              placeholder="Paste the server's access token"
+              placeholder="Access token or PIN"
               value=${token}
               onInput=${(e) => setToken(e.target.value)}
             />

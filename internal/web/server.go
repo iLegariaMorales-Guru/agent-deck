@@ -24,6 +24,14 @@ type Config struct {
 	ReadOnly     bool
 	WebMutations bool // When false, POST/PATCH/DELETE endpoints return 403
 	Token        string
+	// LoginPIN is an optional shorter, memorable alternative to Token for the
+	// POST /api/login form (session-cookie exchange) only — it is never
+	// accepted by the header/query bearer-auth path in auth.go. Token stays
+	// the credential for API/WS/scripted access; LoginPIN exists because that
+	// full-length token is impractical to type/remember on a phone every time
+	// the in-memory session-cookie secret rotates (server restart). Empty
+	// disables it — /api/login then accepts Token only, as before.
+	LoginPIN string
 	// InsecureBind explicitly acknowledges binding a non-loopback address
 	// with no auth token (an unauthenticated RCE surface). Without it the
 	// server refuses to start in that configuration. See bind.go / report #1.

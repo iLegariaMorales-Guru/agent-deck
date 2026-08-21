@@ -36,8 +36,18 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !secureEqual(strings.TrimSpace(req.Token), s.cfg.Token) {
-		writeAPIError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "incorrect access token")
+	// Accept either the full bearer token or the shorter LoginPIN (if one is
+	// configured) — both grant the same session cookie. LoginPIN exists only
+	// as an easier-to-type/remember alternative on this one endpoint; it is
+	// never accepted by the header/query bearer-auth path (see auth.go), so a
+	// guessed PIN buys at most a cookie, never direct API access.
+	candidate := strings.TrimSpace(req.Token)
+	ok := secureEqual(candidate, s.cfg.Token)
+	if !ok && s.cfg.LoginPIN != "" {
+		ok = secureEqual(candidate, s.cfg.LoginPIN)
+	}
+	if !ok {
+		writeAPIError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "incorrect access token or PIN")
 		return
 	}
 
