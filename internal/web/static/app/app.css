@@ -1049,6 +1049,30 @@ body[data-rail="hidden"] .rightrail { display: none; }
   border-top: 1px solid var(--border); margin-top: 4px;
 }
 
+/* ==================== WORK-HEAD "MORE" MENU ====================
+   Edit/Archive/Finish-worktree/Delete used to only exist as Sidebar.js's
+   hover-revealed .actions row. That row is unreachable on a touch
+   viewport — .sidebar is display:none at ≤720px (see MOBILE BOTTOM TABS
+   below) and nothing in this codebase fires :hover on tap. WorkHead is
+   mounted on every viewport, so this menu is what gives phone users those
+   four actions at all, not just a prettier way to reach them on desktop. */
+.more-menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 30;
+  width: 180px;
+  background: var(--panel-2); border: 1px solid var(--border-hi);
+  border-radius: var(--radius-lg); padding: 6px;
+  box-shadow: 0 20px 50px -15px rgba(0,0,0,0.6);
+}
+.more-menu .mm-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 8px; border-radius: 4px; border: 0; background: transparent;
+  font-family: var(--mono); font-size: 11.5px; color: var(--text);
+  cursor: pointer; text-align: left;
+}
+.more-menu .mm-item:hover { background: var(--card); }
+.more-menu .mm-item.danger { color: var(--tn-red); }
+.more-menu .mm-item.danger:hover { background: rgba(247,118,142,0.10); }
+
 /* ==================== MOBILE BOTTOM TABS ==================== */
 .mob-tabs { display: none; }
 
