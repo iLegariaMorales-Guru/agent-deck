@@ -37,6 +37,8 @@ type webCommandOptions struct {
 	readOnly         bool
 	token            string
 	tokenFile        string
+	loginPIN         string
+	loginPINFile     string
 	insecureBind     bool
 	pushEnabled      bool
 	pushVAPIDSubject string
@@ -51,6 +53,8 @@ func parseWebCommandOptions(args []string) (webCommandOptions, error) {
 	fs.BoolVar(&options.readOnly, "read-only", false, "Run in read-only mode (input disabled)")
 	fs.StringVar(&options.token, "token", "", "Bearer token for API/WS access")
 	fs.StringVar(&options.tokenFile, "token-file", "", "Read bearer token for API/WS access from a 0600 file (keeps the secret out of the process argv)")
+	fs.StringVar(&options.loginPIN, "login-pin", "", "Optional shorter PIN accepted by the web login screen in place of the full token (min 6 chars); the full token still works for API/WS access")
+	fs.StringVar(&options.loginPINFile, "login-pin-file", "", "Read the login PIN from a 0600 file instead of --login-pin")
 	fs.BoolVar(&options.insecureBind, "insecure-bind", false, "Allow binding a non-loopback address with no --token or --token-file (UNSAFE: exposes an unauthenticated RCE surface to the network)")
 	fs.BoolVar(&options.pushEnabled, "push", false, "Enable web push notifications (auto-generates VAPID keys per profile)")
 	fs.StringVar(&options.pushVAPIDSubject, "push-vapid-subject", "mailto:agentdeck@localhost", "VAPID subject used for web push notifications")
@@ -74,6 +78,7 @@ func parseWebCommandOptions(args []string) (webCommandOptions, error) {
 		fmt.Println("  agent-deck web --no-tui --listen 127.0.0.1:9000")
 		fmt.Println("  agent-deck web --listen 0.0.0.0:8420 --token secret  # expose to LAN (token REQUIRED)")
 		fmt.Println("  agent-deck web --listen 0.0.0.0:8420 --token-file ~/.config/agent-deck/web-token")
+		fmt.Println("  agent-deck web --token-file ~/.config/agent-deck/web-token --login-pin-file ~/.config/agent-deck/web-login-pin")
 		fmt.Println()
 		fmt.Println("Security: the server binds loopback (127.0.0.1) by default. Binding a")
 		fmt.Println("non-loopback address without --token or --token-file is refused — it would")
@@ -83,6 +88,11 @@ func parseWebCommandOptions(args []string) (webCommandOptions, error) {
 		fmt.Println("(chmod 600); it keeps the secret out of argv, where any local user can read")
 		fmt.Println("it from /proc. MCP administration over HTTP is only wired when a token is")
 		fmt.Println("configured — an unauthenticated server keeps those routes unavailable.")
+		fmt.Println("--login-pin/--login-pin-file add a shorter credential accepted ONLY by the")
+		fmt.Println("web login screen (POST /api/login) — a memorable alternative to pasting the")
+		fmt.Println("full token every time the login session expires or the server restarts.")
+		fmt.Println("The full token still works there too, and remains the only credential")
+		fmt.Println("accepted for direct API/WS bearer auth.")
 	}
 
 	if err := fs.Parse(normalizeArgs(fs, args)); err != nil {
@@ -97,6 +107,9 @@ func parseWebCommandOptions(args []string) (webCommandOptions, error) {
 	if options.pushTestEvery > 0 && !options.pushEnabled {
 		return webCommandOptions{}, fmt.Errorf("--push-test-every requires --push")
 	}
+	if options.loginPIN != "" && options.loginPINFile != "" {
+		return webCommandOptions{}, fmt.Errorf("--login-pin and --login-pin-file are mutually exclusive")
+	}
 	return options, nil
 }
 
@@ -104,6 +117,19 @@ func buildWebServerFromOptions(profile string, options webCommandOptions, menuDa
 	resolvedToken, err := resolveWebToken(options.token, options.tokenFile)
 	if err != nil {
 		return nil, err
+	}
+
+	resolvedLoginPIN, err := resolveLoginPIN(options.loginPIN, options.loginPINFile)
+	if err != nil {
+		return nil, err
+	}
+	if resolvedLoginPIN != "" && resolvedToken == "" {
+		// A PIN with no token configured is a no-op: with no token, authorize()
+		// allows every request, /api/login never gets hit (the frontend only
+		// shows LoginScreen after a 401), and the PIN would authorize against
+		// nothing meaningful anyway. Fail fast rather than let someone believe
+		// the PIN is what's gating access.
+		return nil, fmt.Errorf("--login-pin/--login-pin-file requires --token or --token-file to also be set")
 	}
 
 	// Report #1: refuse an unauthenticated non-loopback bind before the TUI
@@ -149,6 +175,7 @@ func buildWebServerFromOptions(profile string, options webCommandOptions, menuDa
 		ReadOnly:            options.readOnly,
 		WebMutations:        resolveMutationsEnabled(options.readOnly),
 		Token:               resolvedToken,
+		LoginPIN:            resolvedLoginPIN,
 		InsecureBind:        options.insecureBind,
 		TrustedDomains:      session.GetWebTrustedDomains(),
 		ConfirmLinkOpen:     &confirmLinkOpen,
@@ -245,6 +272,72 @@ func resolveWebToken(token, tokenFile string) (string, error) {
 		return unicode.IsSpace(r) || unicode.IsControl(r)
 	}) {
 		return "", fmt.Errorf("--token-file %s must contain a single line with no whitespace or control characters", tokenFile)
+	}
+	return resolved, nil
+}
+
+// minLoginPINLength bounds --login-pin/--login-pin-file from below. The PIN
+// is validated only by the rate-limited /api/login endpoint (see
+// handlers_login.go), not by constant-time-only header auth, so it needs
+// enough length to not be a same-session brute-force target; 6 chars keeps
+// it phone-typeable while giving a comparable search space to a bank PIN.
+const minLoginPINLength = 6
+
+// resolveLoginPIN folds --login-pin and --login-pin-file into the optional
+// short credential accepted by the web login screen alongside the full
+// token. Mirrors resolveWebToken's file-handling (regular file, 0600,
+// size-capped, no whitespace/control bytes) since it reads from the same
+// kind of secret file; kept separate rather than sharing code because the
+// two have different length floors and different "empty is fine" defaults
+// (an empty PIN just disables the PIN path, unlike an empty token which
+// disables auth entirely).
+func resolveLoginPIN(pin, pinFile string) (string, error) {
+	if pinFile == "" {
+		if pin != "" && len(pin) < minLoginPINLength {
+			return "", fmt.Errorf("--login-pin must be at least %d characters", minLoginPINLength)
+		}
+		return pin, nil
+	}
+
+	f, err := os.Open(pinFile)
+	if err != nil {
+		return "", fmt.Errorf("read --login-pin-file: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	info, err := f.Stat()
+	if err != nil {
+		return "", fmt.Errorf("read --login-pin-file: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("--login-pin-file %s is not a regular file", pinFile)
+	}
+	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+		return "", fmt.Errorf("--login-pin-file %s is group- or world-accessible (mode %#o); restrict it with: chmod 600 %s", pinFile, perm, pinFile)
+	}
+	if info.Size() > maxWebTokenFileSize {
+		return "", fmt.Errorf("--login-pin-file %s is larger than %d bytes; expected a single-line PIN", pinFile, maxWebTokenFileSize)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(f, maxWebTokenFileSize+1))
+	if err != nil {
+		return "", fmt.Errorf("read --login-pin-file: %w", err)
+	}
+	if len(data) > maxWebTokenFileSize {
+		return "", fmt.Errorf("--login-pin-file %s is larger than %d bytes; expected a single-line PIN", pinFile, maxWebTokenFileSize)
+	}
+
+	resolved := strings.TrimSpace(string(data))
+	if resolved == "" {
+		return "", fmt.Errorf("--login-pin-file %s is empty", pinFile)
+	}
+	if len(resolved) < minLoginPINLength {
+		return "", fmt.Errorf("--login-pin-file %s: PIN must be at least %d characters", pinFile, minLoginPINLength)
+	}
+	if strings.ContainsFunc(resolved, func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.IsControl(r)
+	}) {
+		return "", fmt.Errorf("--login-pin-file %s must contain a single line with no whitespace or control characters", pinFile)
 	}
 	return resolved, nil
 }
