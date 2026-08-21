@@ -7,7 +7,7 @@
 // Preserves existing dialog + toast components (still Tailwind-classed) so
 // no functional regression. Restyling those is a follow-up.
 import { html } from 'htm/preact'
-import { useEffect } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 import { Topbar } from './Topbar.js'
 import { Sidebar } from './Sidebar.js'
 import { Footer } from './Footer.js'
@@ -29,6 +29,7 @@ import { menuModelSignal } from './dataModel.js'
 import {
   selectedIdSignal, createSessionDialogSignal, confirmDialogSignal,
   groupNameDialogSignal, mutationsEnabledSignal, infoDrawerOpenSignal,
+  editSessionDialogSignal,
   profilesSignal, systemStatsSignal,
   toolFilterSignal, visibleToolsSignal, toolFilterFallbackSignal,
   hiddenToolsSignal, pickerToolsSignal,
@@ -56,6 +57,7 @@ function WorkHead() {
   const { sessions } = menuModelSignal.value
   const selected = selectedIdSignal.value
   const session = sessions.find(s => s.id === selected) || sessions[0]
+  const [showMore, setShowMore] = useState(false)
   if (!session) return null
 
   const kindLabel = (session.kind || 'agent').toUpperCase()
@@ -69,6 +71,53 @@ function WorkHead() {
     if (!canMutate) return
     if (verb === 'fork') return apiFetch('POST', `/api/sessions/${session.id}/fork`, { title: session.title + '-fork' }).catch(() => {})
     return apiFetch('POST', `/api/sessions/${session.id}/${verb}`).catch(() => {})
+  }
+
+  // deselect clears selectedIdSignal + the /s/{id} deep link once the
+  // selected session stops existing (archive/delete) — mirrors the same
+  // cleanup Sidebar.js's doAction() does for its own hover buttons.
+  const deselect = () => {
+    selectedIdSignal.value = null
+    if (window.location.pathname.startsWith('/s/')) {
+      history.replaceState(null, '', '/')
+    }
+  }
+
+  // moreAction covers the row-level actions that only ever lived behind
+  // Sidebar.js's hover-revealed .actions — on a touch viewport the sidebar
+  // itself is display:none (app.css, ≤720px), so edit/archive/worktree-
+  // finish/delete were unreachable from a phone entirely. WorkHead is
+  // always mounted (mobile included), so putting them behind a "⋯" menu
+  // here gives touch users parity without cluttering the always-visible
+  // stop/restart/fork row.
+  const moreAction = (verb) => {
+    setShowMore(false)
+    if (!canMutate) return
+    if (verb === 'edit') {
+      editSessionDialogSignal.value = { sessionId: session.id }
+      return
+    }
+    if (verb === 'archive') {
+      confirmDialogSignal.value = {
+        message: `Archive session "${session.title}"? The process will be stopped and hidden from the active list.`,
+        onConfirm: () => apiFetch('POST', `/api/sessions/${session.id}/archive`).then(deselect).catch(() => {}),
+      }
+      return
+    }
+    if (verb === 'worktreeFinish') {
+      const branch = session.worktreeBranch || session.branch
+      confirmDialogSignal.value = {
+        message: `Finish worktree for "${session.title}"? Merges branch "${branch}" into default branch, removes worktree, deletes branch, and removes session.`,
+        onConfirm: () => apiFetch('POST', `/api/sessions/${session.id}/worktree/finish`).catch(() => {}),
+      }
+      return
+    }
+    if (verb === 'delete') {
+      confirmDialogSignal.value = {
+        message: `Delete session "${session.title}"? This stops the tmux session and removes metadata.`,
+        onConfirm: () => apiFetch('DELETE', `/api/sessions/${session.id}`).then(deselect).catch(() => {}),
+      }
+    }
   }
 
   return html`
@@ -89,6 +138,19 @@ function WorkHead() {
             : html`<button class="btn ghost" onClick=${() => action('start')}><${Icon} d=${ICONS.play} size=${12}/>Start</button>`}
           <button class="btn ghost" onClick=${() => action('restart')}><${Icon} d=${ICONS.restart} size=${12}/>Restart</button>
           ${session.canFork && html`<button class="btn" onClick=${() => action('fork')}><${Icon} d=${ICONS.fork} size=${12}/>Fork</button>`}
+          <div style="position: relative;">
+            <button class=${`icon-btn ${showMore ? 'active' : ''}`} title="More actions" aria-label="More actions"
+                    data-testid="work-head-more-btn"
+                    onClick=${() => setShowMore(v => !v)}>⋯</button>
+            ${showMore && html`
+              <div class="more-menu" data-testid="work-head-more-menu" onClick=${e => e.stopPropagation()}>
+                <button class="mm-item" data-testid="work-head-edit-btn" onClick=${() => moreAction('edit')}><${Icon} d=${ICONS.edit} size=${12}/>Edit</button>
+                <button class="mm-item" data-testid="work-head-archive-btn" onClick=${() => moreAction('archive')}>⌂ Archive</button>
+                ${session.worktree && html`<button class="mm-item" data-testid="work-head-worktree-finish-btn" onClick=${() => moreAction('worktreeFinish')}>⎇✓ Finish worktree</button>`}
+                <button class="mm-item danger" data-testid="work-head-delete-btn" onClick=${() => moreAction('delete')}><${Icon} d=${ICONS.trash} size=${12}/>Delete</button>
+              </div>
+            `}
+          </div>
           <button class="btn primary" onClick=${() => (createSessionDialogSignal.value = true)}>
             <${Icon} d=${ICONS.plus} size=${12}/>New <span class="kbd">n</span>
           </button>
