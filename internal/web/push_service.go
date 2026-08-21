@@ -579,17 +579,26 @@ func (p *pushService) notifySubscribers(ctx context.Context, tr pushTransition) 
 		slog.String("status", tr.Status),
 		slog.Int("subscribers", len(subs)))
 
+	now := time.Now().UTC()
 	msg := pushMessage{
-		Title:      pushTitleForStatus(tr),
-		Body:       pushBodyForStatus(tr),
-		Tag:        fmt.Sprintf("agentdeck-%s-%s", tr.Session.ID, tr.Status),
+		Title: pushTitleForStatus(tr),
+		Body:  pushBodyForStatus(tr),
+		// Unique per event (nanosecond suffix), not just session+status.
+		// iOS/WebKit's renotify support for a repeated tag is unreliable in
+		// PWA context — a session flapping waiting->running->waiting with
+		// the old fixed tag silently dropped the second banner even though
+		// the server-side send succeeded (200/201). A fresh tag every time
+		// sidesteps the WebKit quirk entirely, at the cost of no longer
+		// collapsing repeat notifications for the same session in the
+		// notification center.
+		Tag:        fmt.Sprintf("agentdeck-%s-%s-%d", tr.Session.ID, tr.Status, now.UnixNano()),
 		Renotify:   true,
 		SessionID:  tr.Session.ID,
 		Session:    tr.Session.Title,
 		Status:     tr.Status,
 		Profile:    tr.Profile,
 		Path:       p.routePath("/s/" + url.PathEscape(tr.Session.ID)),
-		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		Timestamp:  now.Format(time.RFC3339),
 		RequireInt: tr.Status == "error",
 	}
 
