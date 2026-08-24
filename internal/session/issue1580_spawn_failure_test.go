@@ -144,6 +144,43 @@ func TestIssue1580_FastDeathWatcherCapturesDyingOutput(t *testing.T) {
 	assert.Contains(t, preview, "failed to start")
 }
 
+// TestSpawnDeath_SubTickCaptureBeforeFirstPoll covers a real report where a
+// brand-new session's process died so fast (~260ms, well under the fast-death
+// watcher's 250ms tick) that dying_output was logged empty every time,
+// regardless of what the process actually printed -- tmux tears the pane down
+// on exit for non-remain-on-exit sessions, and the watcher's first capture
+// attempt used to only happen inside the ticker loop, i.e. no earlier than
+// the first tick. This process exits with NO sleep at all (as fast as sh can
+// echo+exit), so it must be caught by the immediate pre-loop capture in
+// watchForFastDeath, not the ticked one.
+func TestSpawnDeath_SubTickCaptureBeforeFirstPoll(t *testing.T) {
+	skipIfNoTmuxBinary(t)
+
+	inst := NewInstance("test-subtick-fastdeath", "/tmp")
+	inst.Tool = "customfailsubtick"
+	// A small sleep -- long enough for the watcher goroutine to be scheduled
+	// and run its one immediate CapturePaneFresh call, but far short of
+	// spawnFastDeathTick (250ms) -- so this reliably exercises the pre-loop
+	// capture path rather than racing pure goroutine-scheduling latency.
+	inst.Command = "sh -c 'echo boom-instant-dying-output; sleep 0.15; exit 7'"
+
+	require.NoError(t, inst.Start())
+	defer func() { _ = inst.Kill() }()
+
+	var rec *SpawnFailureRecord
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		if rec = inst.SpawnFailure(); rec != nil && rec.Reason == "spawn_died_fast" {
+			break
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+
+	require.NotNil(t, rec, "spawn-failure record must be written when the process dies fast")
+	assert.Contains(t, rec.DyingOutput, "boom-instant-dying-output",
+		"a sub-tick death must still have its output captured via the immediate pre-loop capture")
+}
+
 func readLifecycleLog(t *testing.T) string {
 	t.Helper()
 	data, err := os.ReadFile(GetSessionIDLifecycleLogPath())
