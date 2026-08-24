@@ -25,6 +25,22 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		trustedDomains = []string{}
 	}
 
+	// Claude launch defaults from config.toml's [claude] block — same values
+	// the TUI's New Session dialog seeds itself with (SetDefaults in
+	// internal/ui/claudeoptions.go). A config load failure just leaves
+	// ClaudeDefaults at its zero value (all false) rather than failing the
+	// whole settings request.
+	var claudeDefaults ClaudeDefaults
+	if userConfig, err := session.LoadUserConfig(); err == nil && userConfig != nil {
+		claudeDefaults = ClaudeDefaults{
+			SkipPermissions:      userConfig.Claude.GetDangerousMode(),
+			AllowSkipPermissions: userConfig.Claude.AllowDangerousMode,
+			AutoMode:             userConfig.Claude.AutoMode,
+			UseChrome:            userConfig.Claude.UseChrome,
+			UseTeammateMode:      userConfig.Claude.UseTeammateMode,
+		}
+	}
+
 	// Tool-visibility filter (issue #1259) is read from the process registry at
 	// request time, so it reflects the current config (re-probed only when config
 	// changes — see currentRegistry). It is a display filter only.
@@ -40,6 +56,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		PickerTools:        session.PickerToolNames(),
 		TrustedDomains:     trustedDomains,
 		ConfirmLinkOpen:    s.cfg.confirmLinkOpen(),
+		ClaudeDefaults:     claudeDefaults,
 	})
 }
 
