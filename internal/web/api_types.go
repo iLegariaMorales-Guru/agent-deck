@@ -53,15 +53,24 @@ type CreateSessionRequest struct {
 
 // ClaudeSessionOptions mirrors session.ClaudeOptions' launch-time fields —
 // see internal/ui/claudeoptions.go for the TUI panel this parallels.
+//
+// The four mode toggles are *bool, not bool: a plain bool cannot
+// distinguish "the user left this untouched" from "the user explicitly
+// turned it off," and the dialog only ever sends a toggle the user actually
+// interacted with (see CreateSessionDialog.js's per-toggle `touched`
+// tracking). A nil pointer here means "use the config-derived default from
+// session.NewClaudeOptions" (internal/ui/web_mutator.go
+// buildCreateSessionToolOptions) instead of silently overriding it with
+// false — see the web session permission-defaults fix.
 type ClaudeSessionOptions struct {
 	// SessionMode: "new" (default), "continue", or "resume".
 	SessionMode string `json:"sessionMode,omitempty"`
 	// ResumeSessionID is required when SessionMode is "resume".
 	ResumeSessionID string `json:"resumeSessionId,omitempty"`
-	SkipPermissions bool   `json:"skipPermissions,omitempty"`
-	AutoMode        bool   `json:"autoMode,omitempty"`
-	UseChrome       bool   `json:"useChrome,omitempty"`
-	UseTeammateMode bool   `json:"useTeammateMode,omitempty"`
+	SkipPermissions *bool  `json:"skipPermissions,omitempty"`
+	AutoMode        *bool  `json:"autoMode,omitempty"`
+	UseChrome       *bool  `json:"useChrome,omitempty"`
+	UseTeammateMode *bool  `json:"useTeammateMode,omitempty"`
 	// ExtraArgs is whitespace-split into CLI tokens, same convention as the
 	// TUI's extra-args input (internal/ui/claudeoptions.go GetExtraArgs).
 	ExtraArgs string `json:"extraArgs,omitempty"`
@@ -163,6 +172,24 @@ type SettingsResponse struct {
 	// ConfirmLinkOpen reports whether every other host still confirms.
 	TrustedDomains  []string `json:"trustedDomains"`
 	ConfirmLinkOpen bool     `json:"confirmLinkOpen"`
+
+	// ClaudeDefaults mirrors config.toml's [claude] launch defaults, the
+	// same values the TUI's New Session dialog seeds itself with
+	// (internal/ui/claudeoptions.go ClaudeOptionsPanel.SetDefaults). The web
+	// dialog (CreateSessionDialog.js) reads this to seed its own toggles
+	// instead of hardcoding them to false — see #(web session permission
+	// defaults) fix.
+	ClaudeDefaults ClaudeDefaults `json:"claudeDefaults"`
+}
+
+// ClaudeDefaults is the config-derived subset of SettingsResponse used to
+// seed the New Session dialog's Claude option toggles.
+type ClaudeDefaults struct {
+	SkipPermissions      bool `json:"skipPermissions"`
+	AllowSkipPermissions bool `json:"allowSkipPermissions"`
+	AutoMode             bool `json:"autoMode"`
+	UseChrome            bool `json:"useChrome"`
+	UseTeammateMode      bool `json:"useTeammateMode"`
 }
 
 // ProfilesResponse is returned by GET /api/profiles.

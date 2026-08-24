@@ -2072,6 +2072,36 @@ func DetachSkillFromProject(projectPath, skillRef, sourceName string) (*ProjectS
 
 // ApplyProjectSkills makes project attachments exactly match desired candidates.
 // This is useful for TUI apply flows where users move items between columns.
+// InheritProjectSkills copies every skill attached to sourceProjectPath into
+// targetProjectPath by re-attaching each one fresh. Skill attachment is keyed
+// to a literal project path (AttachSkillToProject/GetAttachedProjectSkills),
+// so a freshly created git/jj worktree's distinct <repo>-<branch> directory
+// starts with none of the skills attached at the repo root it was cut from —
+// this is the call site for fixing that at worktree-creation time (see
+// internal/ui/home.go createSessionInGroupWithWorktreeAndOptions).
+//
+// Best-effort per skill: one failure (e.g. a since-removed source) is
+// collected in errs rather than aborting, so the rest still inherit. Returns
+// 0, nil with no error when the tool doesn't support project skills or the
+// source has none attached.
+func InheritProjectSkills(sourceProjectPath, targetProjectPath, tool string) (inherited int, errs []error) {
+	if !SupportsProjectSkills(tool) {
+		return 0, nil
+	}
+	attachments, err := GetAttachedProjectSkills(sourceProjectPath)
+	if err != nil {
+		return 0, []error{fmt.Errorf("list attached skills: %w", err)}
+	}
+	for _, a := range attachments {
+		if _, err := AttachSkillToProject(targetProjectPath, tool, a.ID, a.Source); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", a.ID, err))
+			continue
+		}
+		inherited++
+	}
+	return inherited, errs
+}
+
 func ApplyProjectSkills(projectPath, tool string, desired []SkillCandidate) error {
 	if !SupportsProjectSkills(tool) {
 		return fmt.Errorf("project skills are not supported for %s sessions", tool)

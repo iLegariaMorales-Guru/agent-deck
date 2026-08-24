@@ -217,10 +217,27 @@ func buildCreateSessionToolOptions(req web.CreateSessionRequest) (toolOptionsJSO
 				opts.SessionMode = req.Claude.SessionMode
 			}
 			opts.ResumeSessionID = req.Claude.ResumeSessionID
-			opts.SkipPermissions = req.Claude.SkipPermissions
-			opts.AutoMode = req.Claude.AutoMode
-			opts.UseChrome = req.Claude.UseChrome
-			opts.UseTeammateMode = req.Claude.UseTeammateMode
+			// Pointers, not bools: nil means "the user never touched this
+			// toggle," so the config-derived default from NewClaudeOptions
+			// above must survive untouched. Only an explicit non-nil value
+			// (the dialog only sends one when the user actually flipped
+			// that specific toggle) overrides it. Unconditionally assigning
+			// req.Claude.X here — even when req.Claude is non-nil only
+			// because of an unrelated field like SessionMode — used to
+			// silently clobber a configured dangerous_mode=true default
+			// with false the moment any other Claude option was touched.
+			if req.Claude.SkipPermissions != nil {
+				opts.SkipPermissions = *req.Claude.SkipPermissions
+			}
+			if req.Claude.AutoMode != nil {
+				opts.AutoMode = *req.Claude.AutoMode
+			}
+			if req.Claude.UseChrome != nil {
+				opts.UseChrome = *req.Claude.UseChrome
+			}
+			if req.Claude.UseTeammateMode != nil {
+				opts.UseTeammateMode = *req.Claude.UseTeammateMode
+			}
 			if args := strings.Fields(req.Claude.ExtraArgs); len(args) > 0 {
 				extraArgs = args
 			}
