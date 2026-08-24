@@ -64,7 +64,7 @@ function ToastItem({ id, message, type }) {
     : type === 'info'  ? 'ℹ'
     : '✓'
   return html`
-    <div class="toast" data-testid="toast" style=${{ borderColor, position: 'relative', pointerEvents: 'auto' }}>
+    <div class="toast" data-testid="toast" style=${{ borderColor, pointerEvents: 'auto' }}>
       <span class="t" style=${{ color: borderColor }}>${sigil}</span>
       <span style="margin-left: 6px;">${message}</span>
       <button type="button"
@@ -82,15 +82,13 @@ export function ToastContainer() {
   if (toasts.length === 0) return null
   const errors = toasts.filter(t => t.type === 'error')
   const nonErrors = toasts.filter(t => t.type !== 'error')
-  // Stack toasts vertically above the footer; the bundle's `.toast` class
-  // anchors a single instance to the bottom-right, so for multiple we
-  // wrap with absolute-positioned stack.
+  // Stack toasts vertically above the footer. The fixed-position anchoring
+  // (bottom-right, mobile-repositioned clear of the tab bar) lives on the
+  // `.toast-stack` class (app.css) rather than inline, so the mobile media
+  // query there actually applies to this element instead of a class-less
+  // div it can never select.
   return html`
-    <div style=${{
-      position: 'fixed', bottom: '40px', right: '14px', zIndex: 70,
-      display: 'flex', flexDirection: 'column', gap: '6px',
-      pointerEvents: 'none', maxWidth: '420px',
-    }}>
+    <div class="toast-stack">
       ${errors.length > 0 && html`
         <div role="alert" aria-live="assertive" style=${{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           ${errors.map(t => html`<${ToastItem} key=${t.id} ...${t}/>`)}
