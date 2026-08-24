@@ -324,6 +324,21 @@ func (i *Instance) watchForFastDeath(command string, gen uint64, wake <-chan str
 	deadline := start.Add(spawnFastDeathWindow)
 	var lastSnapshot string
 
+	// Capture once immediately, before the ticker's first 250ms tick: a
+	// process that dies faster than spawnFastDeathTick (this is exactly the
+	// shape of a "spawn_died_fast, dying_output=''" report) would otherwise
+	// have its pane torn down by tmux (remain-on-exit is off for normal
+	// sessions, tmux.go:2427-2428) before the loop below ever ran a single
+	// capture, guaranteeing an empty dying_output regardless of what the
+	// process actually printed. CapturePaneFresh, not the cached
+	// CapturePane the loop uses, so this can't silently replay stale content
+	// from before this spawn.
+	if content, err := sess.CapturePaneFresh(); err == nil {
+		if trimmed := strings.TrimSpace(content); trimmed != "" {
+			lastSnapshot = trimmed
+		}
+	}
+
 	ticker := time.NewTicker(spawnFastDeathTick)
 	defer ticker.Stop()
 
@@ -349,8 +364,12 @@ func (i *Instance) watchForFastDeath(command string, gen uint64, wake <-chan str
 		if sess.Exists() {
 			// Alive: snapshot the current pane so we hold the dying output the
 			// instant it disappears (tmux discards the pane on process exit for
-			// non-remain-on-exit sessions).
-			if content, err := sess.CapturePane(); err == nil {
+			// non-remain-on-exit sessions). CapturePaneFresh, not the cached
+			// CapturePane: this watcher's whole job is catching the LATEST
+			// output before a possible death on the very next iteration, and
+			// the shared 500ms cache could otherwise hand back content from
+			// before this tick.
+			if content, err := sess.CapturePaneFresh(); err == nil {
 				if trimmed := strings.TrimSpace(content); trimmed != "" {
 					lastSnapshot = trimmed
 				}
