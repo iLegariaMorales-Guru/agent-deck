@@ -472,6 +472,14 @@ export function TerminalPanel() {
         <div role="alert"
              style=${{
                position: 'absolute', inset: '12px 12px auto 12px',
+               // Above the toast layer (z-index 70 in app.css) on purpose:
+               // this banner is a blocking, modal-like alert with its own
+               // "Restart session" action, and an error toast (which never
+               // auto-dismisses) sitting on top of it at the same screen
+               // region -- common on mobile, where both anchor near the
+               // bottom -- used to swallow the click before it reached the
+               // button underneath.
+               zIndex: 80,
                border: '1px solid rgba(247,118,142,0.4)',
                background: 'rgba(22,22,30,0.95)',
                borderRadius: 'var(--radius-lg)',

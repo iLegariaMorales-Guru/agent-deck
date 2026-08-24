@@ -892,8 +892,22 @@ body[data-rail="hidden"] .rightrail { display: none; }
 .archived-actions { display: flex; gap: 6px; margin-top: 6px; }
 
 /* toast */
+/* .toast-stack is the fixed-position wrapper that anchors every toast
+   bubble (Toast.js ToastContainer) -- kept separate from .toast (the
+   per-bubble bubble style, Toast.js ToastItem, which overrides position
+   to `relative` since it stacks inside this wrapper) so the mobile
+   override below actually reaches the element that's really fixed.
+   Previously ToastContainer duplicated these same values as an inline
+   style on a class-less div, so this rule (and the mobile override) never
+   applied to anything real. z-index kept below .tweaks/.overlay (55/60):
+   a transient toast should never be able to outrank a modal or a
+   blocking in-panel alert like TerminalPanel's disconnected banner. */
+.toast-stack {
+  position: fixed; bottom: 40px; right: 14px; z-index: 45;
+  display: flex; flex-direction: column; gap: 6px;
+  pointer-events: none; max-width: 420px;
+}
 .toast {
-  position: fixed; bottom: 40px; right: 14px; z-index: 70;
   padding: 10px 14px;
   background: var(--panel);
   border: 1px solid var(--tn-green);
@@ -1151,7 +1165,7 @@ body[data-rail="hidden"] .rightrail { display: none; }
   .mob-tab.on { color: var(--accent); border-top-color: var(--accent); background: var(--accent-soft); }
   .mob-tab:active { background: var(--card); }
 
-  .toast { bottom: 76px; right: 8px; left: 8px; }
+  .toast-stack { bottom: 76px; right: 8px; left: 8px; }
   .dialog, .cmdk { width: calc(100vw - 24px); margin: 12px; }
   .tweaks { right: 8px; bottom: 76px; left: 8px; }
 }
