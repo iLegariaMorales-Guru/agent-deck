@@ -23,10 +23,10 @@ func TestBuildCreateSessionToolOptions_Claude(t *testing.T) {
 		Claude: &web.ClaudeSessionOptions{
 			SessionMode:     "resume",
 			ResumeSessionID: "11111111-2222-3333-4444-555555555555",
-			SkipPermissions: true,
-			AutoMode:        false,
-			UseChrome:       true,
-			UseTeammateMode: false,
+			SkipPermissions: boolPtr(true),
+			AutoMode:        boolPtr(false),
+			UseChrome:       boolPtr(true),
+			UseTeammateMode: boolPtr(false),
 			ExtraArgs:       "--agent reviewer --model opus",
 			StartQuery:      "fix the failing test",
 		},
@@ -70,6 +70,51 @@ func TestBuildCreateSessionToolOptions_Claude(t *testing.T) {
 	}
 	if startQuery != "fix the failing test" {
 		t.Errorf("startQuery = %q, want %q", startQuery, "fix the failing test")
+	}
+}
+
+// TestBuildCreateSessionToolOptions_Claude_PreservesUntouchedDefaults covers
+// the web session-creation permission-mode bug: picking any one Claude field
+// (here, SessionMode) must not silently reset the OTHER four mode toggles to
+// false. Before ClaudeSessionOptions' bool fields became *bool, a plain bool
+// could not distinguish "the user left this untouched" from "explicitly
+// false," so buildCreateSessionToolOptions unconditionally overwrote all four
+// with their Go zero value the moment req.Claude was non-nil for any reason
+// — clobbering a configured dangerous_mode=true default with false.
+func TestBuildCreateSessionToolOptions_Claude_PreservesUntouchedDefaults(t *testing.T) {
+	req := web.CreateSessionRequest{
+		Tool: "claude",
+		Claude: &web.ClaudeSessionOptions{
+			SessionMode:     "resume",
+			ResumeSessionID: "11111111-2222-3333-4444-555555555555",
+			// SkipPermissions/AutoMode/UseChrome/UseTeammateMode left nil:
+			// the user only touched SessionMode.
+		},
+	}
+
+	userConfig, _ := session.LoadUserConfig()
+	want := session.NewClaudeOptions(userConfig)
+
+	raw, _, _, err := buildCreateSessionToolOptions(req)
+	if err != nil {
+		t.Fatalf("buildCreateSessionToolOptions: %v", err)
+	}
+	got, err := session.UnmarshalClaudeOptions(raw)
+	if err != nil {
+		t.Fatalf("unmarshal claude options: %v", err)
+	}
+
+	if got.SkipPermissions != want.SkipPermissions {
+		t.Errorf("SkipPermissions = %v, want %v (config default, untouched by request)", got.SkipPermissions, want.SkipPermissions)
+	}
+	if got.AutoMode != want.AutoMode {
+		t.Errorf("AutoMode = %v, want %v (config default, untouched by request)", got.AutoMode, want.AutoMode)
+	}
+	if got.UseChrome != want.UseChrome {
+		t.Errorf("UseChrome = %v, want %v (config default, untouched by request)", got.UseChrome, want.UseChrome)
+	}
+	if got.UseTeammateMode != want.UseTeammateMode {
+		t.Errorf("UseTeammateMode = %v, want %v (config default, untouched by request)", got.UseTeammateMode, want.UseTeammateMode)
 	}
 }
 

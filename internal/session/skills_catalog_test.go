@@ -484,6 +484,89 @@ func TestAttachDetachSkillProject(t *testing.T) {
 	}
 }
 
+// TestInheritProjectSkills_CopiesAttachmentsIntoWorktree covers the
+// worktree-skill-inheritance fix: a git/jj worktree gets its own distinct
+// project path, so without this, a skill attached at the repo root would
+// silently not be visible in a session created against the worktree path.
+func TestInheritProjectSkills_CopiesAttachmentsIntoWorktree(t *testing.T) {
+	_, cleanup := setupSkillTestEnv(t)
+	defer cleanup()
+
+	sourcePath, err := os.MkdirTemp("", "agentdeck-inherit-source-*")
+	if err != nil {
+		t.Fatalf("failed to create source path: %v", err)
+	}
+	defer os.RemoveAll(sourcePath)
+	writeSkillDir(t, sourcePath, "lint", "lint", "Linting best practices")
+	if err := SaveSkillSources(map[string]SkillSourceDef{
+		"local": {Path: sourcePath, Enabled: boolPtr(true)},
+	}); err != nil {
+		t.Fatalf("SaveSkillSources failed: %v", err)
+	}
+
+	repoRoot, err := os.MkdirTemp("", "agentdeck-inherit-repo-*")
+	if err != nil {
+		t.Fatalf("failed to create repo root: %v", err)
+	}
+	defer os.RemoveAll(repoRoot)
+	if _, err := AttachSkillToProject(repoRoot, "claude", "lint", "local"); err != nil {
+		t.Fatalf("AttachSkillToProject on repo root failed: %v", err)
+	}
+
+	worktreePath, err := os.MkdirTemp("", "agentdeck-inherit-worktree-*")
+	if err != nil {
+		t.Fatalf("failed to create worktree path: %v", err)
+	}
+	defer os.RemoveAll(worktreePath)
+
+	inherited, errs := InheritProjectSkills(repoRoot, worktreePath, "claude")
+	if len(errs) > 0 {
+		t.Fatalf("InheritProjectSkills errs = %v, want none", errs)
+	}
+	if inherited != 1 {
+		t.Fatalf("inherited = %d, want 1", inherited)
+	}
+
+	targetPath := filepath.Join(worktreePath, ".claude", "skills", "lint")
+	if _, err := os.Lstat(targetPath); err != nil {
+		t.Fatalf("expected skill materialized in worktree at %s: %v", targetPath, err)
+	}
+
+	manifest, err := LoadProjectSkillsManifest(worktreePath)
+	if err != nil {
+		t.Fatalf("LoadProjectSkillsManifest(worktree) failed: %v", err)
+	}
+	if len(manifest.Skills) != 1 || manifest.Skills[0].Name != "lint" {
+		t.Fatalf("worktree manifest = %+v, want one skill named lint", manifest.Skills)
+	}
+}
+
+// TestInheritProjectSkills_NoAttachmentsIsNoOp covers the common case (repo
+// with no project skills attached) doing nothing rather than erroring.
+func TestInheritProjectSkills_NoAttachmentsIsNoOp(t *testing.T) {
+	_, cleanup := setupSkillTestEnv(t)
+	defer cleanup()
+
+	repoRoot, err := os.MkdirTemp("", "agentdeck-inherit-empty-repo-*")
+	if err != nil {
+		t.Fatalf("failed to create repo root: %v", err)
+	}
+	defer os.RemoveAll(repoRoot)
+	worktreePath, err := os.MkdirTemp("", "agentdeck-inherit-empty-worktree-*")
+	if err != nil {
+		t.Fatalf("failed to create worktree path: %v", err)
+	}
+	defer os.RemoveAll(worktreePath)
+
+	inherited, errs := InheritProjectSkills(repoRoot, worktreePath, "claude")
+	if len(errs) > 0 {
+		t.Fatalf("InheritProjectSkills errs = %v, want none", errs)
+	}
+	if inherited != 0 {
+		t.Fatalf("inherited = %d, want 0", inherited)
+	}
+}
+
 func TestAttachSkillToProject_RejectsLegacyFileSkill(t *testing.T) {
 	_, cleanup := setupSkillTestEnv(t)
 	defer cleanup()

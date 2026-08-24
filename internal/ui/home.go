@@ -11786,6 +11786,23 @@ func (h *Home) createSessionInGroupWithWorktreeAndOptions(
 
 		tool, command := createSessionTool(command)
 
+		// Inherit the parent repo's attached project skills into a freshly
+		// created worktree — otherwise a worktree's distinct <repo>-<branch>
+		// directory starts with none of them even though the repo it was cut
+		// from has some, which looks like "the session can't see my skills"
+		// even though skill discovery itself is unchanged. Best-effort: a
+		// failure here must never fail session creation, same as the
+		// worktree setup-script warning above.
+		if worktreePath != "" && worktreeRepoRoot != "" {
+			if _, errs := session.InheritProjectSkills(worktreeRepoRoot, worktreePath, tool); len(errs) > 0 {
+				for _, e := range errs {
+					uiLog.Warn("worktree_skill_inherit_failed",
+						slog.String("worktree_path", worktreePath),
+						slog.String("error", e.Error()))
+				}
+			}
+		}
+
 		var inst *session.Instance
 		if groupPath != "" {
 			inst = session.NewInstanceWithGroupAndTool(name, path, groupPath, tool)
