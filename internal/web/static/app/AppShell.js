@@ -33,7 +33,7 @@ import {
   profilesSignal, systemStatsSignal,
   toolFilterSignal, visibleToolsSignal, toolFilterFallbackSignal,
   hiddenToolsSignal, pickerToolsSignal,
-  trustedDomainsSignal, confirmLinkOpenSignal,
+  trustedDomainsSignal, confirmLinkOpenSignal, voiceInputAvailableSignal,
   sessionCostsSignal, sessionContextSignal, sessionLiveModelSignal,
   sessionEstimatedCostSignal, sessionHealthSignal,
   sidebarWidthSignal,
@@ -230,6 +230,9 @@ export function AppShell() {
         }
         if (typeof data.confirmLinkOpen === 'boolean') {
           confirmLinkOpenSignal.value = data.confirmLinkOpen
+        }
+        if (typeof data.voiceInputAvailable === 'boolean') {
+          voiceInputAvailableSignal.value = data.voiceInputAvailable
         }
       })
       .catch(() => {})

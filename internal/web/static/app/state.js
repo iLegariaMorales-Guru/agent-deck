@@ -201,6 +201,13 @@ export const pickerToolsSignal = signal([])
 export const trustedDomainsSignal = signal([])
 export const confirmLinkOpenSignal = signal(true)
 
+// Voice input (web terminal mic button), hydrated from /api/settings.
+// True only when the server found a working whisper.cpp+ffmpeg install at
+// startup (internal/voice.Detect) -- VoiceRecorder.js additionally requires
+// client-side MediaRecorder/getUserMedia support before it renders the
+// button. Defaults false so the button never flashes on before hydration.
+export const voiceInputAvailableSignal = signal(false)
+
 // POL-1 (Phase 9, plan 01): sidebar load state for skeleton render gate.
 // Initialized false; flipped to true on the first /api/menu response OR the
 // first SSE `menu` snapshot in main.js. Never flips back — once the sidebar

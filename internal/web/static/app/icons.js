@@ -48,6 +48,8 @@ export const ICONS = {
   // follow-up: browsers never expose an absolute path from a native picker,
   // so this opens an in-app filesystem browser instead).
   folder:  'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z',
+  // mic -- VoiceRecorder.js terminal-toolbar voice-input button.
+  mic:     'M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z M19 10v2a7 7 0 01-14 0v-2 M12 19v4 M8 23h8',
 }
 
 export function Dot({ status, size = 7 }) {

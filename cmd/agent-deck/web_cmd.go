@@ -184,6 +184,8 @@ func buildWebServerFromOptions(profile string, options webCommandOptions, menuDa
 		PushVAPIDPrivateKey: resolvedPushPrivate,
 		PushVAPIDSubject:    resolvedPushSubject,
 		PushTestInterval:    options.pushTestEvery,
+		WhisperBinaryPath:   session.GetWebWhisperBinary(),
+		WhisperModelPath:    session.GetWebWhisperModel(),
 	})
 
 	if mutator != nil {

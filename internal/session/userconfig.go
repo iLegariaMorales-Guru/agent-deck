@@ -686,6 +686,14 @@ type WebSettings struct {
 	// hosts that are NOT on TrustedDomains. nil (omitted) defaults to true.
 	// Setting it false accepts the risk and opens every link directly.
 	ConfirmLinkOpen *bool `toml:"confirm_link_open,omitempty"`
+
+	// WhisperBinary/WhisperModel override auto-detection of the local
+	// whisper.cpp CLI and ggml model used by the web terminal's voice-input
+	// mic button (internal/voice.Detect). Empty (the default) auto-searches
+	// PATH and common Homebrew/`~/.local/share/whisper` locations — set
+	// these explicitly only if auto-detection misses a nonstandard install.
+	WhisperBinary string `toml:"whisper_binary,omitempty"`
+	WhisperModel  string `toml:"whisper_model,omitempty"`
 }
 
 // FeedbackSettings controls the in-product feedback prompts.
@@ -3865,6 +3873,26 @@ func GetWebConfirmLinkOpen() bool {
 		return true
 	}
 	return *config.Web.ConfirmLinkOpen
+}
+
+// GetWebWhisperBinary returns the configured `[web].whisper_binary` override
+// for voice-input transcription, or "" to auto-detect (internal/voice.Detect).
+func GetWebWhisperBinary() string {
+	config, err := LoadUserConfig()
+	if err != nil || config == nil {
+		return ""
+	}
+	return config.Web.WhisperBinary
+}
+
+// GetWebWhisperModel returns the configured `[web].whisper_model` override
+// for voice-input transcription, or "" to auto-detect (internal/voice.Detect).
+func GetWebWhisperModel() string {
+	config, err := LoadUserConfig()
+	if err != nil || config == nil {
+		return ""
+	}
+	return config.Web.WhisperModel
 }
 
 // NormalizeTrustedDomains reduces raw `[web].trusted_domains` entries to

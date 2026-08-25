@@ -14,6 +14,10 @@ const (
 	ErrCodeInternalError    = "INTERNAL_ERROR"
 	ErrCodeNotImplemented   = "NOT_IMPLEMENTED"
 	ErrCodeReadOnly         = "READ_ONLY"
+	// ErrCodeVoiceNotConfigured is returned by POST /api/sessions/{id}/transcribe
+	// when whisper.cpp/ffmpeg were not found at server startup (see
+	// internal/voice.Detect). The message carries the specific reason.
+	ErrCodeVoiceNotConfigured = "VOICE_NOT_CONFIGURED"
 )
 
 // CreateSessionRequest is the body for POST /api/sessions. Fields below
@@ -180,6 +184,12 @@ type SettingsResponse struct {
 	// instead of hardcoding them to false — see #(web session permission
 	// defaults) fix.
 	ClaudeDefaults ClaudeDefaults `json:"claudeDefaults"`
+
+	// VoiceInputAvailable reports whether the server found a working
+	// whisper.cpp + ffmpeg install at startup (internal/voice.Detect). The
+	// web terminal's mic button (VoiceRecorder.js) only renders when this is
+	// true AND the browser itself supports MediaRecorder/getUserMedia.
+	VoiceInputAvailable bool `json:"voiceInputAvailable"`
 }
 
 // ClaudeDefaults is the config-derived subset of SettingsResponse used to
