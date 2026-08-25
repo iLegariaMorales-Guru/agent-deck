@@ -80,16 +80,22 @@ var whisperBinaryNames = []string{"whisper-cli", "whisper-cpp", "main"}
 var whisperBinaryDirs = []string{"/opt/homebrew/bin", "/usr/local/bin"}
 
 // whisperModelDirs are searched, in order, for a ggml model file when
-// Config.WhisperModel is empty. Preference order within each directory:
-// base.en (best speed/accuracy tradeoff for short voice commands on CPU),
-// then small.en (more accurate, slower), then any other ggml-*.bin found.
+// Config.WhisperModel is empty.
 var whisperModelDirs = []string{
 	"~/.local/share/whisper",
 	"/opt/homebrew/share/whisper-cpp",
 	"/usr/local/share/whisper-cpp",
 }
 
-var preferredModelNames = []string{"ggml-base.en.bin", "ggml-small.en.bin"}
+// preferredModelNames prefers multilingual models (small, then base) over
+// the English-only ".en" variants: this server's user dictates in Spanish
+// as well as English, and an ".en" model doesn't just transcribe Spanish
+// speech poorly, it was trained only on English audio and effectively
+// can't understand it at all. ".en" names are kept at the end purely as a
+// fallback for an existing install that predates this — Transcribe always
+// passes `-l auto`, so a multilingual model handles either language
+// without the caller needing to know which one was spoken.
+var preferredModelNames = []string{"ggml-small.bin", "ggml-base.bin", "ggml-small.en.bin", "ggml-base.en.bin"}
 
 // Detect resolves cfg into concrete, verified binary/model paths, searching
 // common install locations for anything left empty. Call once at server
@@ -226,6 +232,8 @@ func Transcribe(ctx context.Context, caps Capabilities, audioBytes []byte, conte
 	if out, err := runCommand(whisperCtx, caps.WhisperBinary,
 		"-m", caps.WhisperModel,
 		"-f", wavPath,
+		"-l", "auto", // auto-detect spoken language (multilingual models only --
+		// an ".en" model ignores this and only ever understands English)
 		"-nt", // no timestamps in output
 		"-oj", // JSON output
 		"-of", outPrefix,
