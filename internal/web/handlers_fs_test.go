@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -135,6 +136,92 @@ func TestFSBrowse_Unauthorized(t *testing.T) {
 
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// #issue: lets the New Session dialog's folder browser start a brand-new
+// project from a blank directory (the natural next step once the home-dir
+// crash fix stops it from pointing a session straight at $HOME) instead of
+// forcing a trip out to a terminal first.
+func TestFSMkdir_CreatesFolderUnderParent(t *testing.T) {
+	root := t.TempDir()
+	srv := NewServer(Config{ListenAddr: "127.0.0.1:0", WebMutations: true})
+
+	payload, err := json.Marshal(map[string]string{"parentPath": root, "name": "my-new-project"})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/fs/mkdir", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp FSMkdirResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	wantPath := filepath.Join(root, "my-new-project")
+	if resp.Path != wantPath {
+		t.Errorf("Path = %q, want %q", resp.Path, wantPath)
+	}
+	info, err := os.Stat(wantPath)
+	if err != nil || !info.IsDir() {
+		t.Fatalf("folder was not actually created on disk: %v", err)
+	}
+}
+
+func TestFSMkdir_RejectsPathSeparatorInName(t *testing.T) {
+	root := t.TempDir()
+	srv := NewServer(Config{ListenAddr: "127.0.0.1:0", WebMutations: true})
+
+	payload, _ := json.Marshal(map[string]string{"parentPath": root, "name": "../escape"})
+	req := httptest.NewRequest(http.MethodPost, "/api/fs/mkdir", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(root), "escape")); err == nil {
+		t.Fatal("mkdir escaped the parent directory")
+	}
+}
+
+func TestFSMkdir_ConflictWhenAlreadyExists(t *testing.T) {
+	root := t.TempDir()
+	mustMkdir(t, filepath.Join(root, "taken"))
+	srv := NewServer(Config{ListenAddr: "127.0.0.1:0", WebMutations: true})
+
+	payload, _ := json.Marshal(map[string]string{"parentPath": root, "name": "taken"})
+	req := httptest.NewRequest(http.MethodPost, "/api/fs/mkdir", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestFSMkdir_MutationsDisabled(t *testing.T) {
+	root := t.TempDir()
+	srv := NewServer(Config{ListenAddr: "127.0.0.1:0", WebMutations: false})
+
+	payload, _ := json.Marshal(map[string]string{"parentPath": root, "name": "nope"})
+	req := httptest.NewRequest(http.MethodPost, "/api/fs/mkdir", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "nope")); err == nil {
+		t.Fatal("folder was created despite mutations being disabled")
 	}
 }
 
