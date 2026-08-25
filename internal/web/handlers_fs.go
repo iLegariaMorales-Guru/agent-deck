@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -114,4 +115,95 @@ func (s *Server) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
 		resp.IsHome = true
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// FSMkdirRequest is the body for POST /api/fs/mkdir.
+type FSMkdirRequest struct {
+	ParentPath string `json:"parentPath"`
+	Name       string `json:"name"`
+}
+
+// FSMkdirResponse is returned by POST /api/fs/mkdir: the newly created
+// directory, browsable the same way handleFSBrowse's response is.
+type FSMkdirResponse struct {
+	Path string `json:"path"`
+}
+
+// handleFSMkdir creates a new subfolder under ParentPath (defaulting to the
+// server's home dir, same as handleFSBrowse). Exists so the New Session
+// dialog's folder browser can start a brand-new project from a blank
+// directory instead of forcing the user out to a terminal first -- the
+// common case right after #issue's home-dir-crash fix, where "I want a new
+// project in my home dir" now needs one extra click to name the folder
+// rather than being able to (accidentally) point a session straight at
+// $HOME itself.
+func (s *Server) handleFSMkdir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeAPIError(w, http.StatusMethodNotAllowed, ErrCodeMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !s.authorizeRequest(r) {
+		writeAPIError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "unauthorized")
+		return
+	}
+	if !s.checkMutationsAllowed(w) {
+		return
+	}
+	if !s.checkMutationRateLimit(w) {
+		return
+	}
+
+	var req FSMkdirRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, ErrCodeBadRequest, "invalid request body")
+		return
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		writeAPIError(w, http.StatusBadRequest, ErrCodeBadRequest, "name is required")
+		return
+	}
+	// A bare folder name only -- no nesting, no escaping the chosen parent.
+	// filepath.Join below would otherwise happily walk "../.." right out of
+	// the browsable tree.
+	if name == "." || name == ".." || strings.ContainsAny(name, "/\\") {
+		writeAPIError(w, http.StatusBadRequest, ErrCodeBadRequest, "name cannot contain a path separator")
+		return
+	}
+
+	parent := strings.TrimSpace(req.ParentPath)
+	if parent == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, ErrCodeInternalError, "cannot resolve home directory")
+			return
+		}
+		parent = home
+	} else {
+		resolved, err := session.ResolveProjectPath(parent)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, ErrCodeBadRequest, err.Error())
+			return
+		}
+		parent = resolved
+	}
+
+	info, err := os.Stat(parent)
+	if err != nil || !info.IsDir() {
+		writeAPIError(w, http.StatusBadRequest, ErrCodeBadRequest, "not a directory: "+parent)
+		return
+	}
+
+	newDir := filepath.Join(parent, name)
+	if err := os.Mkdir(newDir, 0o755); err != nil {
+		if os.IsExist(err) {
+			writeAPIError(w, http.StatusConflict, ErrCodeConflict, "a folder with that name already exists")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, ErrCodeInternalError, "cannot create folder: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, FSMkdirResponse{Path: newDir})
 }

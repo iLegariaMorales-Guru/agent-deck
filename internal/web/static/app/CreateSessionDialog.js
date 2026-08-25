@@ -165,10 +165,21 @@ function FolderBrowser({ start, onPick, onClose }) {
   // project folder -- confirming the initial default listing as-is used to
   // be a fast, easy way to end up with a doomed session.
   const [isHome, setIsHome] = useState(false)
+  // Inline "new folder" form: lets the browser start a brand-new project
+  // from a blank directory (the common next step right after a bare $HOME
+  // is refused -- see isHome above) instead of forcing a trip out to a
+  // terminal first.
+  const [newFolderOpen, setNewFolderOpen] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [newFolderBusy, setNewFolderBusy] = useState(false)
+  const [newFolderError, setNewFolderError] = useState(null)
 
   function load(p) {
     setLoading(true)
     setError(null)
+    setNewFolderOpen(false)
+    setNewFolderName('')
+    setNewFolderError(null)
     apiFetch('GET', '/api/fs/browse' + (p ? '?path=' + encodeURIComponent(p) : ''))
       .then(resp => {
         setPath(resp.path)
@@ -178,6 +189,18 @@ function FolderBrowser({ start, onPick, onClose }) {
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
+  }
+
+  function createFolder(e) {
+    e.preventDefault()
+    const name = newFolderName.trim()
+    if (!name || newFolderBusy) return
+    setNewFolderBusy(true)
+    setNewFolderError(null)
+    apiFetch('POST', '/api/fs/mkdir', { parentPath: path, name })
+      .then(resp => load(resp.path)) // navigate straight into the new folder
+      .catch(err => setNewFolderError(err.message))
+      .finally(() => setNewFolderBusy(false))
   }
 
   useEffect(() => { load(start) }, []) // eslint-disable-line
@@ -205,16 +228,45 @@ function FolderBrowser({ start, onPick, onClose }) {
           </button>
         </div>
         <div class="db" style="gap: 8px;">
-          <div style="font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); overflow-x: auto; white-space: nowrap; padding-bottom: 2px;">
-            <span style="cursor: pointer;" onClick=${() => load('/')}>/</span>
-            ${segments.map((seg, i) => html`
-              <span key=${seg.path}>
-                <span style="color: var(--muted-2);"> / </span>
-                <span style=${i === segments.length - 1 ? 'color: var(--text-hi);' : 'cursor: pointer;'}
-                      onClick=${() => i !== segments.length - 1 && load(seg.path)}>${seg.label}</span>
-              </span>
-            `)}
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="flex: 1; min-width: 0; font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); overflow-x: auto; white-space: nowrap; padding-bottom: 2px;">
+              <span style="cursor: pointer;" onClick=${() => load('/')}>/</span>
+              ${segments.map((seg, i) => html`
+                <span key=${seg.path}>
+                  <span style="color: var(--muted-2);"> / </span>
+                  <span style=${i === segments.length - 1 ? 'color: var(--text-hi);' : 'cursor: pointer;'}
+                        onClick=${() => i !== segments.length - 1 && load(seg.path)}>${seg.label}</span>
+                </span>
+              `)}
+            </div>
+            ${!loading && !newFolderOpen && html`
+              <button type="button" class="btn ghost" style="flex-shrink: 0; padding: 4px 8px; font-size: 11.5px;"
+                      onClick=${() => setNewFolderOpen(true)}>
+                + New folder
+              </button>
+            `}
           </div>
+
+          ${newFolderOpen && html`
+            <form onSubmit=${createFolder} style="display: flex; align-items: center; gap: 6px;">
+              <input autofocus value=${newFolderName}
+                     onInput=${e => setNewFolderName(e.target.value)}
+                     placeholder="new-project-name" style="flex: 1; min-width: 0;"/>
+              <button type="submit" class="btn primary" style="flex-shrink: 0; padding: 6px 10px;"
+                      disabled=${!newFolderName.trim() || newFolderBusy}>
+                Create
+              </button>
+              <button type="button" class="btn ghost" style="flex-shrink: 0; padding: 6px 8px;"
+                      onClick=${() => { setNewFolderOpen(false); setNewFolderName(''); setNewFolderError(null) }}>
+                <${Icon} d=${ICONS.x} size=${13}/>
+              </button>
+            </form>
+          `}
+          ${newFolderError && html`
+            <div style="font-family: var(--mono); font-size: 11.5px; color: var(--tn-red); padding: 4px 2px 0;">
+              ${newFolderError}
+            </div>
+          `}
 
           ${error && html`
             <div style="font-family: var(--mono); font-size: 11.5px; color: var(--tn-red); padding: 8px 10px;

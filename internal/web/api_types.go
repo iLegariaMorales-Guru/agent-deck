@@ -18,6 +18,9 @@ const (
 	// when whisper.cpp/ffmpeg were not found at server startup (see
 	// internal/voice.Detect). The message carries the specific reason.
 	ErrCodeVoiceNotConfigured = "VOICE_NOT_CONFIGURED"
+	// ErrCodeConflict is returned by POST /api/fs/mkdir when a folder with
+	// the requested name already exists at that location.
+	ErrCodeConflict = "CONFLICT"
 )
 
 // CreateSessionRequest is the body for POST /api/sessions. Fields below
