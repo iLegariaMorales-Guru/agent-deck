@@ -156,6 +156,15 @@ function FolderBrowser({ start, onPick, onClose }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  // True when the loaded listing is the server's home directory -- where
+  // GET /api/fs/browse lands by default with no `path` (i.e. the very
+  // first listing this component ever shows, before any navigation). A
+  // session whose working dir is the bare home dir reliably kills the
+  // launched tool within ~300ms of spawn, so "Use this folder" stays
+  // disabled here until the user has actually navigated into a real
+  // project folder -- confirming the initial default listing as-is used to
+  // be a fast, easy way to end up with a doomed session.
+  const [isHome, setIsHome] = useState(false)
 
   function load(p) {
     setLoading(true)
@@ -165,6 +174,7 @@ function FolderBrowser({ start, onPick, onClose }) {
         setPath(resp.path)
         setParent(resp.parent || '')
         setEntries(resp.entries || [])
+        setIsHome(!!resp.isHome)
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
@@ -234,9 +244,14 @@ function FolderBrowser({ start, onPick, onClose }) {
             `}
           </div>
         </div>
+        ${isHome && !loading && html`
+          <div style="font-family: var(--mono); font-size: 11.5px; color: var(--tn-yellow, #e0af68); padding: 2px 2px 0;">
+            This is your home directory — pick (or open) a project folder inside it.
+          </div>
+        `}
         <div class="df">
           <button type="button" class="btn ghost" onClick=${onClose}>Cancel</button>
-          <button type="button" class="btn primary" disabled=${!path || loading} onClick=${() => onPick(path)}>
+          <button type="button" class="btn primary" disabled=${!path || loading || isHome} onClick=${() => onPick(path)}>
             Use this folder
           </button>
         </div>

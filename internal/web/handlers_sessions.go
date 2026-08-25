@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -67,6 +69,22 @@ func (s *Server) handleSessionsCollection(w http.ResponseWriter, r *http.Request
 		if req.ProjectPath == "" {
 			writeAPIError(w, http.StatusBadRequest, ErrCodeBadRequest, "projectPath is required")
 			return
+		}
+		// #issue: the New Session dialog's folder browser lands on $HOME by
+		// default (GET /api/fs/browse with no path) and its "Use this
+		// folder" button is armed the instant that listing loads -- easy to
+		// confirm without ever navigating into a real project. A session
+		// whose cwd is the bare home directory reliably makes the launched
+		// tool (e.g. claude) die within ~300ms of spawn (first-run
+		// trust-folder prompt eats the pty), leaving a dead tmux session
+		// that Restart just recreates identically. Reject it here as
+		// defense-in-depth alongside the frontend guard.
+		if resolved, err := session.ResolveProjectPath(req.ProjectPath); err == nil {
+			if home, herr := os.UserHomeDir(); herr == nil && filepath.Clean(resolved) == filepath.Clean(home) {
+				writeAPIError(w, http.StatusBadRequest, ErrCodeBadRequest,
+					"projectPath cannot be your home directory — pick or create a project folder inside it")
+				return
+			}
 		}
 		if s.mutator == nil {
 			writeAPIError(w, http.StatusServiceUnavailable, ErrCodeNotImplemented, "mutations not available")

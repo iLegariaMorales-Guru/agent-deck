@@ -1,10 +1,12 @@
 package web
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -207,6 +209,52 @@ func TestSessionsCollectionPOSTCreatesSession(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "new-id") {
 		t.Errorf("expected session id in response, got: %s", rr.Body.String())
+	}
+}
+
+// #issue: the New Session dialog's folder browser used to let a user
+// confirm the browser's default (home-dir) listing without ever navigating
+// into a real project, submitting projectPath == $HOME -- a working
+// directory that reliably kills the launched tool within ~300ms of spawn,
+// leaving a dead tmux session Restart just recreates identically. This is
+// the server-side defense-in-depth check (the primary fix is the disabled
+// "Use this folder" button in CreateSessionDialog.js).
+func TestSessionsCollectionPOSTRejectsHomeDirectoryAsProjectPath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home directory available")
+	}
+	srv := NewServer(Config{
+		ListenAddr:   "127.0.0.1:0",
+		WebMutations: true,
+	})
+	srv.menuData = &fakeMenuDataLoader{snapshot: &MenuSnapshot{}}
+	called := false
+	srv.mutator = &fakeMutator{
+		createSessionFn: func(req CreateSessionRequest) (string, error) {
+			called = true
+			return "new-id", nil
+		},
+	}
+
+	payload, err := json.Marshal(map[string]string{
+		"title":       "Test",
+		"tool":        "claude",
+		"projectPath": home,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if called {
+		t.Error("CreateSession was called despite projectPath being the home directory")
 	}
 }
 
