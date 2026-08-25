@@ -494,6 +494,34 @@ body[data-rail="hidden"] .rightrail { display: none; }
 .tpath { color: var(--text); font-weight: 500; }
 .tmeta { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
 
+/* Voice input mic button (VoiceRecorder.js), mounted in .term-strip. */
+.mic-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-dim); cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.mic-btn:hover:not(:disabled) { color: var(--text-hi); border-color: var(--border-hi); }
+.mic-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.mic-btn.recording {
+  color: var(--tn-red); border-color: var(--tn-red);
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+.mic-btn.busy { color: var(--accent); animation: mic-spin 0.9s linear infinite; }
+@keyframes mic-pulse {
+  0%, 100% { background: transparent; }
+  50% { background: rgba(247,118,142,0.18); }
+}
+@keyframes mic-spin {
+  0% { opacity: 0.4; }
+  50% { opacity: 1; }
+  100% { opacity: 0.4; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mic-btn.recording, .mic-btn.busy { animation: none; }
+}
+
 .term-body {
   flex: 1; min-height: 0; padding: 14px 16px; overflow: auto;
   font-family: var(--mono); font-size: 13px; line-height: 1.55;

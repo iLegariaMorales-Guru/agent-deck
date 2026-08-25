@@ -41,22 +41,31 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Voice input capability (internal/voice) — computed once at startup in
+	// NewServer, not re-probed per request. s.voice is nil only in tests
+	// that construct Server directly instead of via NewServer.
+	voiceInputAvailable := false
+	if s.voice != nil {
+		voiceInputAvailable = s.voice.Capabilities().Available
+	}
+
 	// Tool-visibility filter (issue #1259) is read from the process registry at
 	// request time, so it reflects the current config (re-probed only when config
 	// changes — see currentRegistry). It is a display filter only.
 	writeJSON(w, http.StatusOK, SettingsResponse{
-		Profile:            s.cfg.Profile,
-		ReadOnly:           s.cfg.ReadOnly,
-		WebMutations:       s.cfg.WebMutations,
-		Version:            buildVersion(),
-		ToolFilter:         session.ToolFilterActive(),
-		VisibleTools:       session.VisibleToolNames(),
-		ToolFilterFallback: session.ToolFilterFallbackActive(),
-		HiddenTools:        session.ConfiguredHiddenToolNames(),
-		PickerTools:        session.PickerToolNames(),
-		TrustedDomains:     trustedDomains,
-		ConfirmLinkOpen:    s.cfg.confirmLinkOpen(),
-		ClaudeDefaults:     claudeDefaults,
+		Profile:             s.cfg.Profile,
+		ReadOnly:            s.cfg.ReadOnly,
+		WebMutations:        s.cfg.WebMutations,
+		Version:             buildVersion(),
+		ToolFilter:          session.ToolFilterActive(),
+		VisibleTools:        session.VisibleToolNames(),
+		ToolFilterFallback:  session.ToolFilterFallbackActive(),
+		HiddenTools:         session.ConfiguredHiddenToolNames(),
+		PickerTools:         session.PickerToolNames(),
+		TrustedDomains:      trustedDomains,
+		ConfirmLinkOpen:     s.cfg.confirmLinkOpen(),
+		ClaudeDefaults:      claudeDefaults,
+		VoiceInputAvailable: voiceInputAvailable,
 	})
 }
 

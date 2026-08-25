@@ -10,6 +10,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { EmptyStateDashboard } from './EmptyStateDashboard.js'
 import { terminalKeymap } from './terminalKeys.js'
 import { createTerminalLinkHandler } from './terminalLinks.js'
+import { VoiceMicButton } from './VoiceRecorder.js'
 
 // Mobile detection: pointer:coarse for touch devices
 function isMobileDevice() {
@@ -273,6 +274,10 @@ export function TerminalPanel() {
       if (!ctx.ws || ctx.ws.readyState !== WebSocket.OPEN || !ctx.terminalAttached || readOnlySignal.value) return
       ctx.ws.send(JSON.stringify({ type: 'input', data }))
     }
+    // VoiceMicButton (rendered outside this effect, in the JSX return below)
+    // needs a way to inject a transcribed string through the same guarded
+    // path paste already uses -- it reaches in via ctxRef.current.sendInput.
+    ctx.sendInput = sendInput
     const inputDisposable = terminal.onData(sendInput)
 
     // Remap keystrokes the browser/xterm mishandles to the bytes a native
@@ -461,6 +466,11 @@ export function TerminalPanel() {
         <span class="tdots"><i/><i/><i/></span>
         <span class="tpath">session · ${sessionId}</span>
         <span style="flex: 1;"/>
+        <${VoiceMicButton}
+          sessionId=${sessionId}
+          disabled=${readOnlySignal.value}
+          onTranscript=${(text) => ctxRef.current?.sendInput?.(text)}
+        />
       </div>
       <div style=${{
         flex: '1', minHeight: '0', minWidth: '0', overflow: 'hidden',

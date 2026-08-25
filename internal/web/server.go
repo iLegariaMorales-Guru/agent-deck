@@ -14,6 +14,7 @@ import (
 	"github.com/asheshgoplani/agent-deck/internal/costs"
 	"github.com/asheshgoplani/agent-deck/internal/logging"
 	"github.com/asheshgoplani/agent-deck/internal/session"
+	"github.com/asheshgoplani/agent-deck/internal/voice"
 	"golang.org/x/time/rate"
 )
 
@@ -50,6 +51,13 @@ type Config struct {
 	PushVAPIDSubject    string
 	PushTestInterval    time.Duration
 	RemoteFleet         RemoteFleetLoader
+	// WhisperBinaryPath/WhisperModelPath override auto-detection of the
+	// local whisper.cpp CLI/model for the web terminal's voice-input mic
+	// button (internal/voice). Empty means auto-detect. See
+	// session.GetWebWhisperBinary/Model (`[web] whisper_binary`/`whisper_model`
+	// in config.toml).
+	WhisperBinaryPath string
+	WhisperModelPath  string
 }
 
 // confirmLinkOpen resolves Config.ConfirmLinkOpen, defaulting to true so an
@@ -179,6 +187,14 @@ type Server struct {
 	remoteFleet     RemoteFleetLoader
 	mutationLimiter *rate.Limiter
 
+	// voice/voiceSemaphore back POST /api/sessions/{id}/transcribe (the web
+	// terminal's mic button). voice is nil until SetVoiceTranscriber is
+	// called or NewServer's own defaultVoiceTranscriber is wired in;
+	// voiceSemaphore is a 1-slot gate so at most one CPU-heavy whisper.cpp
+	// transcription runs at a time.
+	voice          VoiceTranscriber
+	voiceSemaphore chan struct{}
+
 	// sessionSecret signs the cookie issued by POST /api/login. In-memory
 	// only (see session_cookie.go) — a restart invalidates sessions.
 	sessionSecret []byte
@@ -214,7 +230,17 @@ func NewServer(cfg Config) *Server {
 		mutationLimiter:  mutationLimiter,
 		hookStatusLoader: defaultLoadHookStatuses,
 		sessionSecret:    newSessionSecret(),
+		voiceSemaphore:   make(chan struct{}, 1),
 	}
+	// voice.Detect does real PATH/filesystem probing (brew-installed
+	// whisper.cpp/ffmpeg) — run it once here, not per-request. Result is
+	// cached on defaultVoiceTranscriber for the process lifetime; a missing
+	// install just means the mic button never reports available, not a
+	// startup failure (mirrors the push-service pattern below).
+	s.voice = defaultVoiceTranscriber{caps: voice.Detect(voice.Config{
+		WhisperBinary: cfg.WhisperBinaryPath,
+		WhisperModel:  cfg.WhisperModelPath,
+	})}
 	if s.remoteFleet == nil {
 		s.remoteFleet = session.NewRemoteFleetScanner()
 	}
@@ -301,6 +327,10 @@ func NewServer(cfg Config) *Server {
 	mux.HandleFunc("/api/sessions/{id}/timeline", s.handleSessionTimeline)
 
 	mux.HandleFunc("/api/system/stats", s.handleSystemStats)
+
+	// Voice input (web terminal mic button) — see internal/voice and
+	// handlers_voice.go.
+	mux.HandleFunc("POST /api/sessions/{id}/transcribe", s.handleSessionTranscribe)
 
 	mux.HandleFunc("/api/skills", s.handleSkillsCatalog)
 
