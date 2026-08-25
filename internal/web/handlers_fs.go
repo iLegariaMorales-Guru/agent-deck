@@ -32,6 +32,15 @@ type FSBrowseResponse struct {
 	Path    string          `json:"path"`
 	Parent  string          `json:"parent,omitempty"`
 	Entries []FSBrowseEntry `json:"entries"`
+	// IsHome is true when Path is exactly the server's home directory —
+	// where this endpoint lands by default with no `path` query param. A
+	// session whose working dir is the bare home directory reliably kills
+	// the launched tool within ~300ms of spawn (first-run trust-folder
+	// prompt eats the pty). CreateSessionDialog.js's FolderBrowser uses
+	// this to keep "Use this folder" disabled until the user has actually
+	// navigated into a real project folder, instead of letting the
+	// browser's initial (home-dir) listing be confirmed as-is.
+	IsHome bool `json:"isHome,omitempty"`
 }
 
 func (s *Server) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
@@ -100,6 +109,9 @@ func (s *Server) handleFSBrowse(w http.ResponseWriter, r *http.Request) {
 	resp := FSBrowseResponse{Path: dir, Entries: entries}
 	if parent := filepath.Dir(dir); parent != dir {
 		resp.Parent = parent
+	}
+	if home, err := os.UserHomeDir(); err == nil && filepath.Clean(dir) == filepath.Clean(home) {
+		resp.IsHome = true
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

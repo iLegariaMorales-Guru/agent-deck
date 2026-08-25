@@ -36,6 +36,9 @@ func TestFSBrowse_ListsSubdirectoriesOnly(t *testing.T) {
 	if resp.Parent != filepath.Dir(root) {
 		t.Errorf("Parent = %q, want %q", resp.Parent, filepath.Dir(root))
 	}
+	if resp.IsHome {
+		t.Error("IsHome = true for an ordinary tempdir, want false")
+	}
 	names := make([]string, len(resp.Entries))
 	for i, e := range resp.Entries {
 		names[i] = e.Name
@@ -64,6 +67,35 @@ func TestFSBrowse_DefaultsToHomeDirectory(t *testing.T) {
 	}
 	if resp.Path != home {
 		t.Errorf("Path = %q, want home dir %q", resp.Path, home)
+	}
+	// #issue: CreateSessionDialog.js's FolderBrowser relies on this flag to
+	// keep "Use this folder" disabled on the browser's default (home-dir)
+	// listing -- confirming the bare home dir as a session's working
+	// directory reliably kills the launched tool within ~300ms of spawn.
+	if !resp.IsHome {
+		t.Error("IsHome = false for the default (no-path) listing, want true")
+	}
+}
+
+func TestFSBrowse_ExplicitHomePathAlsoMarksIsHome(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home directory available")
+	}
+	srv := NewServer(Config{ListenAddr: "127.0.0.1:0"})
+	req := httptest.NewRequest(http.MethodGet, "/api/fs/browse?path="+home, nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp FSBrowseResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.IsHome {
+		t.Error("IsHome = false when explicitly navigating to the home dir, want true")
 	}
 }
 
