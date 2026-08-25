@@ -12,20 +12,30 @@ import (
 // default-size, and agent-deck runs the tool as the pane's INITIAL PROCESS
 // (RunCommandAsInitialProcess), so the tool paints its first frames into an
 // 80x24 window. The attach client arrives later at the real terminal size and
-// window-size=largest grows the window — but a TUI that fixed its layout
-// geometry on the first paint keeps drawing the 80-column layout into the
-// wider pane. OpenCode does exactly that and renders visibly clipped; tools
-// that reflow on SIGWINCH (Claude Code, Codex) hid the gap for two releases.
+// tmux re-arbitrates the window per Session.Start's `window-size` policy
+// (`latest` as of the "Fix terminal text clipping on narrow clients (phone)"
+// change; was `largest` when this comment was first written) — but a TUI
+// that fixed its layout geometry on the first paint keeps drawing the
+// 80-column layout into the wider pane. OpenCode does exactly that and
+// renders visibly clipped; tools that reflow on SIGWINCH (Claude Code,
+// Codex) hid the gap for two releases -- except in one case: Claude Code's
+// raw-mode untrusted-folder trust prompt for a brand-new directory doesn't
+// survive a resize down to 0x0, which `latest` newly permits if a second
+// client ever attaches with an unset PTY size (see
+// internal/web/terminal_bridge.go's tmuxPaneStartupSize).
 //
 // This is the other half of #1167, which pre-sized only the ATTACH client's
 // PTY (see StartAttachPTY) and left the session's own creation at the default.
 // aggressive-resize cannot rescue the birth size either: it is a no-op under
-// window-size=largest, which Session.Start pins.
+// window-size=latest, which Session.Start pins (same as it was under the
+// prior `largest` policy).
 const (
 	// tmuxDefaultCols/Rows are tmux's own birth size for a detached session.
 	// They are a floor, not a target: a host terminal narrower than this must
 	// not birth a pane MORE clipped than tmux's default already is, and
-	// window-size=largest shrinks the window to the real client on attach.
+	// window-size=latest re-arbitrates the window to match whichever client
+	// most recently attached (growing OR shrinking it — unlike the old
+	// `largest` policy, which could only grow).
 	tmuxDefaultCols = 80
 	tmuxDefaultRows = 24
 
