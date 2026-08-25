@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -80,7 +81,22 @@ func newTmuxPTYBridge(tmuxSession, tmuxSocketName, sessionID string, writer *wsC
 
 	cmd := tmuxAttachCommand(tmuxSession, tmuxSocketName)
 
-	ptmx, err := pty.Start(cmd)
+	// #issue: pty.Start (no size) leaves this attach client's PTY at
+	// whatever the kernel handed back for a freshly-opened pty -- 0x0 --
+	// until the browser's first real resize message lands a round-trip
+	// later. Since Session.Start sets `window-size latest` (internal/tmux/
+	// tmux.go), tmux re-arbitrates the pane to match the MOST RECENT
+	// client the instant this one attaches, shrinking a healthy birth size
+	// down to 0x0 and delivering SIGWINCH. For most tools that's a
+	// harmless, self-correcting reflow -- but it lands inside the very
+	// first raw-mode paint of Claude Code's untrusted-folder trust prompt
+	// (any brand-new project directory), which doesn't survive a 0x0
+	// resize: the process exits within ~300ms of spawn, tmux tears the
+	// session down with it, and the browser's corrective resize never gets
+	// a chance to land. Starting the attach client's PTY at the session's
+	// actual current size (or a sane non-zero fallback) closes the window.
+	size := tmuxPaneStartupSize(tmuxSession, tmuxSocketName)
+	ptmx, err := pty.StartWithSize(cmd, &size)
 	if err != nil {
 		return nil, fmt.Errorf("start tmux pty: %w", err)
 	}
@@ -182,14 +198,17 @@ func (b *tmuxPTYBridge) Resize(cols, rows int) error {
 	// process. Because the attach client (see tmuxAttachCommand) is no longer
 	// flagged `-f ignore-size`, the tmux server now uses this client's PTY
 	// size as its declared geometry and re-arbitrates the window dimensions
-	// per the session's `window-size` policy (`largest` — set at Session.Start
-	// in internal/tmux/tmux.go). The previous `tmux resize-window` call here
-	// was removed because it implicitly flipped the session option to
-	// `window-size=manual` and pinned the window to the web viewport, which
-	// dragged native attached clients (Ghostty, iTerm) along with it. Letting
-	// tmux do the arbitration via `largest` keeps every client at the size of
-	// the biggest viewer; smaller clients see a clipped portion of the larger
-	// window content (no dot-filled void cells).
+	// per the session's `window-size` policy (`latest` as of #issue "Fix
+	// terminal text clipping on narrow clients (phone)" — set at
+	// Session.Start in internal/tmux/tmux.go; was `largest` before that).
+	// The previous `tmux resize-window` call here was removed because it
+	// implicitly flipped the session option to `window-size=manual` and
+	// pinned the window to the web viewport, which dragged native attached
+	// clients (Ghostty, iTerm) along with it. Under `latest`, tmux instead
+	// re-arbitrates to whichever client was MOST RECENTLY active — this is
+	// exactly why newTmuxPTYBridge's attach must never start its PTY at a
+	// degenerate 0x0 size (see tmuxPaneStartupSize): under this policy a
+	// brand-new, not-yet-sized client can shrink the pane, not just grow it.
 	if err := pty.Setsize(b.ptmx, &pty.Winsize{
 		Rows: uint16(rows), // #nosec G115 -- terminal rows fits in uint16; PTY ABI enforces this
 		Cols: uint16(cols), // #nosec G115 -- terminal cols fits in uint16; PTY ABI enforces this
@@ -253,6 +272,48 @@ func tmuxSessionExists(name, socketName string) (bool, error) {
 	return false, fmt.Errorf("tmux has-session failed: %s", msg)
 }
 
+// tmuxHeadlessFallbackCols/Rows mirror internal/tmux's headlessInitialCols/
+// Rows (the size a detached `new-session` is born at under the web daemon,
+// which has no controlling TTY of its own to size against) -- used here
+// only when querying the session's actual current size fails, so the
+// attach client still never starts at a degenerate 0x0.
+const (
+	tmuxHeadlessFallbackCols = 200
+	tmuxHeadlessFallbackRows = 50
+)
+
+// tmuxPaneStartupSize returns the size to hand pty.StartWithSize for the
+// web terminal's attach client: the target session's actual current window
+// size when it can be queried, or a safe non-zero fallback otherwise. See
+// the call site in newTmuxPTYBridge for why 0x0 (pty.Start's default) is
+// unsafe under `window-size latest`.
+func tmuxPaneStartupSize(sessionName, socketName string) pty.Winsize {
+	ctx, cancel := context.WithTimeout(context.Background(), tmuxHasSessionProbeTimeout)
+	defer cancel()
+	out, err := tmuxCommandContext(ctx, socketName, "display-message", "-t", sessionName, "-p", "#{window_width}x#{window_height}").Output()
+	if err == nil {
+		if cols, rows, ok := parseWxH(strings.TrimSpace(string(out))); ok {
+			return pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)}
+		}
+	}
+	return pty.Winsize{Cols: tmuxHeadlessFallbackCols, Rows: tmuxHeadlessFallbackRows}
+}
+
+// parseWxH parses tmux's "#{window_width}x#{window_height}" format,
+// rejecting anything that isn't two positive integers separated by "x".
+func parseWxH(s string) (cols, rows int, ok bool) {
+	parts := strings.SplitN(s, "x", 2)
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	c, err1 := strconv.Atoi(parts[0])
+	r, err2 := strconv.Atoi(parts[1])
+	if err1 != nil || err2 != nil || c <= 0 || r <= 0 {
+		return 0, 0, false
+	}
+	return c, r, true
+}
+
 // tmuxCommand assembles an `exec.Cmd` for tmux, selecting the server in the
 // following precedence order: (1) explicit socketName from the caller — the
 // session's stored TmuxSocketName captured at creation time, passed through
@@ -308,7 +369,7 @@ func tmuxCommandContext(ctx context.Context, socketName string, args ...string) 
 
 func tmuxAttachCommand(sessionName, socketName string) *exec.Cmd {
 	// Web's attach is now a normal client whose PTY size participates in tmux's
-	// `window-size=largest` arbitration (set at Session.Start). Previously we
+	// `window-size=latest` arbitration (set at Session.Start). Previously we
 	// passed `-f ignore-size` together with a manual `tmux resize-window` call
 	// in (*tmuxPTYBridge).Resize; the manual resize-window flipped the session
 	// option to `window-size=manual` and pinned the window to the web viewport

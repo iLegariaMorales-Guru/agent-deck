@@ -240,3 +240,48 @@ func TestTmuxAttachCommand_WhitespaceSocketNameFallsBackToEnv(t *testing.T) {
 		t.Fatalf("whitespace-only socket name must fall through to legacy TMUX env\n got:  %v\n want: %v", cmd.Args, wantArgs)
 	}
 }
+
+func TestParseWxH(t *testing.T) {
+	cases := []struct {
+		in       string
+		wantCols int
+		wantRows int
+		wantOK   bool
+	}{
+		{"200x50", 200, 50, true},
+		{"1x1", 1, 1, true},
+		{"", 0, 0, false},
+		{"200", 0, 0, false},
+		{"200x", 0, 0, false},
+		{"x50", 0, 0, false},
+		{"0x50", 0, 0, false}, // #issue: a zero dimension must not be treated as valid
+		{"200x0", 0, 0, false},
+		{"-1x50", 0, 0, false},
+		{"200x50x10", 0, 0, false},
+		{"abcxdef", 0, 0, false},
+	}
+	for _, c := range cases {
+		cols, rows, ok := parseWxH(c.in)
+		if ok != c.wantOK || cols != c.wantCols || rows != c.wantRows {
+			t.Errorf("parseWxH(%q) = (%d, %d, %v), want (%d, %d, %v)", c.in, cols, rows, ok, c.wantCols, c.wantRows, c.wantOK)
+		}
+	}
+}
+
+// #issue: newTmuxPTYBridge used to start the attach client's PTY via
+// pty.Start (implicit 0x0 size). Under the session's `window-size latest`
+// policy that let a brand-new tmux client shrink the pane to 0x0 on
+// attach, SIGWINCH-killing Claude Code's untrusted-folder trust prompt
+// within ~300ms of spawn. tmuxPaneStartupSize must never return a 0x0
+// size — verified here against a session name that cannot exist, which
+// exercises the fallback path deterministically without a real tmux
+// server.
+func TestTmuxPaneStartupSize_FallsBackToNonZeroWhenQueryFails(t *testing.T) {
+	size := tmuxPaneStartupSize("agent-deck-test-nonexistent-session-9f3c2b", "")
+	if size.Cols == 0 || size.Rows == 0 {
+		t.Fatalf("tmuxPaneStartupSize returned a degenerate size %+v, want non-zero fallback", size)
+	}
+	if size.Cols != tmuxHeadlessFallbackCols || size.Rows != tmuxHeadlessFallbackRows {
+		t.Errorf("size = %+v, want fallback %dx%d", size, tmuxHeadlessFallbackCols, tmuxHeadlessFallbackRows)
+	}
+}
