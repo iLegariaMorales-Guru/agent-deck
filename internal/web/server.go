@@ -332,6 +332,10 @@ func NewServer(cfg Config) *Server {
 	// internal/prismatic and handlers_prismatic.go.
 	mux.HandleFunc("GET /api/sessions/{id}/prismatic", s.handleSessionPrismatic)
 
+	// Prismatic credentials vault (PR 2/4) — machine-wide, not session-scoped.
+	// See handlers_prismatic_credentials.go.
+	mux.HandleFunc("/api/prismatic/credentials", s.handlePrismaticCredentials)
+
 	mux.HandleFunc("/api/system/stats", s.handleSystemStats)
 
 	// Voice input (web terminal mic button) — see internal/voice and

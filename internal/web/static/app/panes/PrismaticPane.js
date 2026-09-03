@@ -14,9 +14,10 @@
 // canned initial prompts for a normal session, not a new run type.
 import { html } from 'htm/preact'
 import { useEffect, useState } from 'preact/hooks'
-import { selectedIdSignal, createSessionDialogSignal, createSessionPrefillSignal } from '../state.js'
+import { selectedIdSignal, createSessionDialogSignal, createSessionPrefillSignal, mutationsEnabledSignal } from '../state.js'
 import { menuModelSignal } from '../dataModel.js'
 import { apiFetch } from '../api.js'
+import { addToast } from '../Toast.js'
 
 const TYPE_FILTERS = [
   { id: 'cni', label: 'CNI' },
@@ -67,6 +68,14 @@ function PrismaticPaneForSession({ session }) {
   const [filter, setFilter] = useState('cni')
   const [focusedDir, setFocusedDir] = useState('')
   const [env, setEnv] = useState('qa')
+  const [credStatus, setCredStatus] = useState(null)
+
+  function refreshCredentials() {
+    apiFetch('GET', '/api/prismatic/credentials')
+      .then(resp => setCredStatus(resp))
+      .catch(() => { /* CredentialsSection shows its own load-failed state via credStatus === null */ })
+  }
+  useEffect(refreshCredentials, [])
 
   useEffect(() => {
     let cancelled = false
@@ -201,12 +210,113 @@ function PrismaticPaneForSession({ session }) {
               <span class="ic">⇥</span>Generate handoff doc
             </button>
             <div class=${`pris-env-chip ${env}`} onClick=${() => setEnv(env === 'qa' ? 'prod' : 'qa')}
-                 title="Only changes the generated prompt text — credentials/deploy targeting land in a later PR">
+                 title="Only changes the generated prompt text — the launched session's Claude does its own auth via the deploy-integration skill, this doesn't inject env vars yet">
               <span class="d"></span><b>${env.toUpperCase()}</b>
             </div>
           </div>
         </div>
       `}
+
+      <div class="pris-section">
+        <div class="pris-section-head">
+          <span class="kicker">Credentials</span>
+          <span class="sub-kicker">used by source-def curls (next PR) — never sent to a launched session yet</span>
+        </div>
+        <${CredentialsSection} status=${credStatus} onChange=${refreshCredentials}/>
+      </div>
+    </div>
+  `
+}
+
+const ENV_LABELS = { qa: 'QA', prod: 'Prod' }
+
+function CredentialsSection({ status, onChange }) {
+  // { kind, env } while a row's input is open, else null. Only one row can
+  // be mid-edit at a time — same reasoning as CredentialsView.tsx (cni-cli):
+  // a stray abandoned edit shouldn't linger.
+  const [editing, setEditing] = useState(null)
+  const [value, setValue] = useState('')
+  const [busy, setBusy] = useState(false)
+  const mutationsEnabled = mutationsEnabledSignal.value
+
+  if (!status) {
+    return html`<div style="font-family: var(--mono); font-size: 11.5px; color: var(--muted);">Loading…</div>`
+  }
+
+  function startEdit(kind, env) {
+    setEditing({ kind, env })
+    setValue('')
+  }
+
+  async function save(kind, env) {
+    if (busy || !value.trim()) return
+    setBusy(true)
+    try {
+      await apiFetch('POST', '/api/prismatic/credentials', { kind, env, value: value.trim() })
+      addToast(`Saved ${kind === 'prism' ? 'Prism token' : 'Guru API credentials'} for ${ENV_LABELS[env]}`)
+      setEditing(null)
+      setValue('')
+      onChange()
+    } catch (e) {
+      // apiFetch already toasts the error message (e.g. the 'user:token' format check).
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function clear(kind, env) {
+    if (busy) return
+    setBusy(true)
+    try {
+      await apiFetch('DELETE', '/api/prismatic/credentials', { kind, env })
+      addToast(`Cleared ${kind === 'prism' ? 'Prism token' : 'Guru API credentials'} for ${ENV_LABELS[env]}`)
+      onChange()
+    } catch (e) {
+      // toasted upstream
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function renderRow(kind, env, configured) {
+    if (editing && editing.kind === kind && editing.env === env) {
+      return html`
+        <div key=${env} class="pris-cred-edit">
+          <span class=${`env ${env}`}>${ENV_LABELS[env]}</span>
+          <input type="password" autofocus placeholder=${kind === 'prism' ? 'paste refresh token' : 'user@getguru.com:token'}
+                 value=${value} onInput=${e => setValue(e.target.value)}
+                 onKeyDown=${e => { if (e.key === 'Enter') save(kind, env); if (e.key === 'Escape') setEditing(null) }}/>
+          <button class="pris-cred-btn" disabled=${busy || !value.trim()} onClick=${() => save(kind, env)}>Save</button>
+          <button class="pris-cred-btn" onClick=${() => setEditing(null)}>Cancel</button>
+        </div>
+      `
+    }
+    return html`
+      <div key=${env} class="pris-cred-row">
+        <span class=${`env ${env}`}>${ENV_LABELS[env]}</span>
+        <span class=${`val ${configured ? 'set' : ''}`}>${configured ? '•••••••••• configured' : 'not configured'}</span>
+        ${mutationsEnabled && html`
+          <button class="pris-cred-btn" onClick=${() => startEdit(kind, env)}>${configured ? 'Replace' : 'Set'}</button>
+        `}
+        ${mutationsEnabled && configured && html`
+          <button class="pris-cred-btn danger" disabled=${busy} onClick=${() => clear(kind, env)}>Clear</button>
+        `}
+      </div>
+    `
+  }
+
+  return html`
+    <div class="pris-cred-grid">
+      <div class="pris-cred-card">
+        <div class="h">Prism refresh tokens</div>
+        ${renderRow('prism', 'qa', status.prism.qa)}
+        ${renderRow('prism', 'prod', status.prism.prod)}
+      </div>
+      <div class="pris-cred-card">
+        <div class="h">Guru API credentials</div>
+        ${renderRow('guru', 'qa', status.guru.qa)}
+        ${renderRow('guru', 'prod', status.guru.prod)}
+      </div>
     </div>
   `
 }

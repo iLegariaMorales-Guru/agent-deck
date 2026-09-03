@@ -1135,6 +1135,24 @@ body[data-rail="hidden"] .rightrail { display: none; }
 .pris-env-chip.prod b  { color: var(--tn-red); }
 .pris-env-chip b { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; }
 
+.pris-cred-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.pris-cred-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.pris-cred-card .h { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 6px; }
+.pris-cred-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-family: var(--mono); font-size: 11px; }
+.pris-cred-row .env { width: 36px; font-weight: 700; flex: none; }
+.pris-cred-row .env.qa   { color: var(--tn-cyan); }
+.pris-cred-row .env.prod { color: var(--tn-red); }
+.pris-cred-row .val { flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pris-cred-row .val.set { color: var(--tn-green); }
+.pris-cred-row .pris-cred-btn {
+  font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: 4px;
+  border: 1px solid var(--border-hi); background: var(--panel); cursor: pointer; color: var(--text); flex: none;
+}
+.pris-cred-row .pris-cred-btn:hover { border-color: var(--accent); color: var(--accent); }
+.pris-cred-row .pris-cred-btn.danger:hover { border-color: var(--tn-red); color: var(--tn-red); }
+.pris-cred-edit { display: flex; gap: 6px; align-items: center; padding: 4px 0; }
+.pris-cred-edit input { flex: 1; min-width: 0; }
+
 /* watchers strip */
 .watcher-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .watcher-tile {
