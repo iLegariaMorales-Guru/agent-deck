@@ -31,6 +31,11 @@ type prismaticCurlsRequest struct {
 	Category       string   `json:"category"`
 	TeamIDs        []string `json:"teamIds,omitempty"` // prod only; empty = default team
 	IpaasID        string   `json:"ipaasId,omitempty"` // manual override, skips resolution
+	// Name/IconURL override what was parsed out of createSource.ts / derived
+	// from it — e.g. the source has its name in ALL CAPS and Guru's
+	// convention wants Title Case. Empty means "use the extracted default".
+	Name    string `json:"name,omitempty"`
+	IconURL string `json:"iconUrl,omitempty"`
 }
 
 type prismaticCurlsResponse struct {
@@ -135,7 +140,7 @@ func (s *Server) handleSessionPrismaticCurls(w http.ResponseWriter, r *http.Requ
 		writeAPIError(w, http.StatusInternalServerError, ErrCodeInternalError, "failed to load Guru credentials")
 		return
 	}
-	curls, err := prismatic.BuildCurls(info, req.Env, ipaas.ID, req.Category, credentials, teams)
+	curls, err := prismatic.BuildCurls(info, req.Env, ipaas.ID, req.Category, credentials, teams, req.Name, req.IconURL)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, ErrCodeInternalError, "failed to build curl commands")
 		return

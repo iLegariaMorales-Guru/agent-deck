@@ -106,12 +106,17 @@ var apiBaseForEnv = func(env string) string {
 	return "https://qaapi.getguru.com"
 }
 
-// sourceDefBody builds the JSON body for a create/promote request at the
-// given availability ("TEAM" or "GENERAL").
-func sourceDefBody(info SourceDefInfo, ipaasID, category, availability string) (string, error) {
-	iconSlug := strings.ReplaceAll(strings.ToLower(info.SourceName), " ", "_")
-	iconURL := fmt.Sprintf("https://assets.getguru.com/source-icons/%s.png", iconSlug)
+// defaultIconURL derives Guru's conventional source-icon URL from a source
+// name — lowercased, spaces to underscores.
+func defaultIconURL(sourceName string) string {
+	iconSlug := strings.ReplaceAll(strings.ToLower(sourceName), " ", "_")
+	return fmt.Sprintf("https://assets.getguru.com/source-icons/%s.png", iconSlug)
+}
 
+// sourceDefBody builds the JSON body for a create/promote request at the
+// given availability ("TEAM" or "GENERAL"). name/iconURL are already
+// resolved (override applied or default derived) by the caller.
+func sourceDefBody(info SourceDefInfo, name, iconURL, ipaasID, category, availability string) (string, error) {
 	config := map[string]any{"ipaasIntegrationId": ipaasID}
 	if info.NativePermission {
 		config["supportsSourceNativePermissions"] = true
@@ -119,7 +124,7 @@ func sourceDefBody(info SourceDefInfo, ipaasID, category, availability string) (
 
 	body := map[string]any{
 		"configType":   "GURU_IPAAS",
-		"name":         info.SourceName,
+		"name":         name,
 		"type":         info.SourceDefinitionType,
 		"config":       config,
 		"iconUrl":      iconURL,
@@ -137,8 +142,20 @@ func sourceDefBody(info SourceDefInfo, ipaasID, category, availability string) (
 // string embedded verbatim via -u; an empty string falls back to an
 // env-appropriate placeholder so the curl is still readable/copyable. teams
 // is only consulted for prod — an empty slice falls back to GuruTestTeamID,
-// same as cni-cli.
-func BuildCurls(info SourceDefInfo, env, ipaasID, category, credentials string, teams []Team) ([]CurlStep, error) {
+// same as cni-cli. nameOverride/iconURLOverride let the caller correct what
+// was parsed out of createSource.ts (e.g. Guru's convention wants Title
+// Case but the source literally has it in caps) — empty means "use the
+// extracted/derived default", same as before this parameter existed.
+func BuildCurls(info SourceDefInfo, env, ipaasID, category, credentials string, teams []Team, nameOverride, iconURLOverride string) ([]CurlStep, error) {
+	name := info.SourceName
+	if strings.TrimSpace(nameOverride) != "" {
+		name = strings.TrimSpace(nameOverride)
+	}
+	iconURL := defaultIconURL(name)
+	if strings.TrimSpace(iconURLOverride) != "" {
+		iconURL = strings.TrimSpace(iconURLOverride)
+	}
+
 	apiBase := apiBaseForEnv(env)
 	cred := strings.TrimSpace(credentials)
 	if cred == "" {
@@ -151,7 +168,7 @@ func BuildCurls(info SourceDefInfo, env, ipaasID, category, credentials string, 
 	baseDefs := apiBase + "/api/v1/admin/sources/definitions"
 
 	if env != "prod" {
-		generalBody, err := sourceDefBody(info, ipaasID, category, "GENERAL")
+		generalBody, err := sourceDefBody(info, name, iconURL, ipaasID, category, "GENERAL")
 		if err != nil {
 			return nil, err
 		}
@@ -164,11 +181,11 @@ func BuildCurls(info SourceDefInfo, env, ipaasID, category, credentials string, 
 		}, nil
 	}
 
-	teamBody, err := sourceDefBody(info, ipaasID, category, "TEAM")
+	teamBody, err := sourceDefBody(info, name, iconURL, ipaasID, category, "TEAM")
 	if err != nil {
 		return nil, err
 	}
-	generalBody, err := sourceDefBody(info, ipaasID, category, "GENERAL")
+	generalBody, err := sourceDefBody(info, name, iconURL, ipaasID, category, "GENERAL")
 	if err != nil {
 		return nil, err
 	}

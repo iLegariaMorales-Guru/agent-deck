@@ -260,7 +260,15 @@ function CurlsDialog({ session, integration, onClose }) {
   const [env, setEnv] = useState('qa')
   const [category, setCategory] = useState(SOURCE_DEF_CATEGORIES[0])
   const [teamIds, setTeamIds] = useState([TEST_TEAMS[0].id])
+  // Extra teams beyond the two defaults, added by pasting a team id directly
+  // (encoded or decoded — whichever form the admin API actually expects;
+  // we don't validate the shape, we just pass through whatever's pasted).
+  const [customTeams, setCustomTeams] = useState([])
+  const [customTeamId, setCustomTeamId] = useState('')
+  const [customTeamName, setCustomTeamName] = useState('')
   const [manualIpaasId, setManualIpaasId] = useState('')
+  const [nameOverride, setNameOverride] = useState('')
+  const [iconUrlOverride, setIconUrlOverride] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState(null) // the last response from the server
   const [copiedAll, setCopiedAll] = useState(false)
@@ -268,6 +276,8 @@ function CurlsDialog({ session, integration, onClose }) {
   // Edit-mode only: the fetched definition, and the editable fields seeded
   // from it. existing.status: 'idle' | 'found' | 'notfound' | 'error'.
   const [existing, setExisting] = useState({ status: 'idle', definition: null, reason: '' })
+  const [editName, setEditName] = useState('')
+  const [editIconUrl, setEditIconUrl] = useState('')
   const [editCategory, setEditCategory] = useState('')
   const [editAvailability, setEditAvailability] = useState('GENERAL')
   const [editIpaasId, setEditIpaasId] = useState('')
@@ -283,6 +293,21 @@ function CurlsDialog({ session, integration, onClose }) {
     setTeamIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
   }
 
+  function addCustomTeam() {
+    const id = customTeamId.trim()
+    if (!id) return
+    const name = customTeamName.trim() || id
+    setCustomTeams(teams => [...teams, { id, name }])
+    setTeamIds(ids => ids.includes(id) ? ids : [...ids, id])
+    setCustomTeamId('')
+    setCustomTeamName('')
+  }
+
+  function removeCustomTeam(id) {
+    setCustomTeams(teams => teams.filter(t => t.id !== id))
+    setTeamIds(ids => ids.filter(x => x !== id))
+  }
+
   async function generate(ipaasId) {
     setBusy(true)
     setCopiedAll(false)
@@ -293,6 +318,8 @@ function CurlsDialog({ session, integration, onClose }) {
         category,
         teamIds: env === 'prod' ? teamIds : undefined,
         ipaasId: ipaasId || undefined,
+        name: nameOverride.trim() || undefined,
+        iconUrl: iconUrlOverride.trim() || undefined,
       })
       setResult(resp)
     } catch (e) {
@@ -311,6 +338,8 @@ function CurlsDialog({ session, integration, onClose }) {
       if (resp.found) {
         const def = resp.definition || {}
         const cfg = def.config || {}
+        setEditName(def.name || '')
+        setEditIconUrl(def.iconUrl || '')
         setEditCategory(def.category || SOURCE_DEF_CATEGORIES[0])
         setEditAvailability(def.availability || 'GENERAL')
         setEditIpaasId(cfg.ipaasIntegrationId || '')
@@ -334,6 +363,8 @@ function CurlsDialog({ session, integration, onClose }) {
     try {
       const edited = {
         ...existing.definition,
+        name: editName,
+        iconUrl: editIconUrl,
         category: editCategory,
         availability: editAvailability,
         config: {
@@ -399,6 +430,16 @@ function CurlsDialog({ session, integration, onClose }) {
                 ${SOURCE_DEF_CATEGORIES.map(c => html`<option key=${c} value=${c}>${c}</option>`)}
               </select>
             </div>
+            <div class="pris-curls-field">
+              <label>Name (optional override)</label>
+              <input type="text" placeholder="defaults to createSource.ts's sourceName"
+                     value=${nameOverride} onInput=${e => setNameOverride(e.target.value)}/>
+            </div>
+            <div class="pris-curls-field">
+              <label>Icon URL (optional override)</label>
+              <input type="text" placeholder="defaults to Guru's source-icons convention"
+                     value=${iconUrlOverride} onInput=${e => setIconUrlOverride(e.target.value)}/>
+            </div>
             ${env === 'prod' && html`
               <div class="pris-curls-field">
                 <label>Test team(s) for the TEAM → GENERAL rollout dance</label>
@@ -408,6 +449,20 @@ function CurlsDialog({ session, integration, onClose }) {
                     ${team.name}
                   </label>
                 `)}
+                ${customTeams.map(team => html`
+                  <label key=${team.id} class="pris-curls-check">
+                    <input type="checkbox" checked=${teamIds.includes(team.id)} onChange=${() => toggleTeam(team.id)}/>
+                    ${team.name}
+                    <button class="pris-cred-btn danger" onClick=${() => removeCustomTeam(team.id)}>×</button>
+                  </label>
+                `)}
+                <div class="pris-curls-addteam">
+                  <input type="text" placeholder="team id (encoded or decoded — paste whatever the endpoint expects)"
+                         value=${customTeamId} onInput=${e => setCustomTeamId(e.target.value)}/>
+                  <input type="text" placeholder="label (optional)"
+                         value=${customTeamName} onInput=${e => setCustomTeamName(e.target.value)}/>
+                  <button class="pris-cred-btn" disabled=${!customTeamId.trim()} onClick=${addCustomTeam}>+ Add team</button>
+                </div>
               </div>
             `}
             <button class="pris-qbtn" disabled=${busy} onClick=${() => generate()}>
@@ -447,6 +502,14 @@ function CurlsDialog({ session, integration, onClose }) {
           <div class="pris-curls-body">
             <div class="pris-curls-reason">
               Loaded <b>${existing.definition.name}</b> (${existing.definition.type}) from ${env.toUpperCase()}. Other fields are kept as-is.
+            </div>
+            <div class="pris-curls-field">
+              <label>Name</label>
+              <input type="text" value=${editName} onInput=${e => setEditName(e.target.value)}/>
+            </div>
+            <div class="pris-curls-field">
+              <label>Icon URL</label>
+              <input type="text" value=${editIconUrl} onInput=${e => setEditIconUrl(e.target.value)}/>
             </div>
             <div class="pris-curls-field">
               <label>Category</label>
