@@ -117,6 +117,15 @@ export const focusedIdSignal = signal(null)
 // createSessionDialogSignal: boolean (true = dialog open)
 export const createSessionDialogSignal = signal(false)
 
+// createSessionPrefillSignal: null, or { path, prompt, groupPath } to seed
+// CreateSessionDialog's initial field values on its next open. Read once via
+// a lazy useState initializer (the dialog only mounts while
+// createSessionDialogSignal is true, so every open is a fresh mount) and
+// cleared right after — a quick-launch button (PrismaticPane.js today) sets
+// this alongside createSessionDialogSignal = true; the ordinary "+ New
+// session" button never touches it, so it stays null for a blank dialog.
+export const createSessionPrefillSignal = signal(null)
+
 // confirmDialogSignal: null or { message: string, onConfirm: function }
 export const confirmDialogSignal = signal(null)
 

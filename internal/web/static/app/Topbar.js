@@ -20,6 +20,7 @@ const TABS = [
   { id: 'terminal',  label: 'Terminal'  },
   { id: 'mcp',       label: 'MCPs'      },
   { id: 'skills',    label: 'Skills'    },
+  { id: 'prismatic', label: 'Prismatic' },
   { id: 'conductor', label: 'Conductor' },
   { id: 'watchers',  label: 'Watchers'  },
   { id: 'costs',     label: 'Costs'     },

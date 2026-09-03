@@ -327,6 +327,11 @@ func NewServer(cfg Config) *Server {
 	mux.HandleFunc("/api/sessions/health/batch", s.handleSessionHealthBatch)
 	mux.HandleFunc("/api/sessions/{id}/timeline", s.handleSessionTimeline)
 
+	// Prismatic pane (Web UI): detects whether a session's project lives
+	// inside a Prismatic CNI monorepo and lists sibling integrations. See
+	// internal/prismatic and handlers_prismatic.go.
+	mux.HandleFunc("GET /api/sessions/{id}/prismatic", s.handleSessionPrismatic)
+
 	mux.HandleFunc("/api/system/stats", s.handleSystemStats)
 
 	// Voice input (web terminal mic button) — see internal/voice and
