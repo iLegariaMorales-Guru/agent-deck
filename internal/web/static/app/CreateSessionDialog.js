@@ -10,7 +10,7 @@
 import { html } from 'htm/preact'
 import { useState, useEffect } from 'preact/hooks'
 import {
-  createSessionDialogSignal, mutationsEnabledSignal,
+  createSessionDialogSignal, createSessionPrefillSignal, mutationsEnabledSignal,
   toolFilterFallbackSignal, pickerToolsSignal, settingsSignal,
 } from './state.js'
 import { menuModelSignal } from './dataModel.js'
@@ -313,17 +313,27 @@ function FolderBrowser({ start, onPick, onClose }) {
 }
 
 export function CreateSessionDialog() {
+  // Read once at mount — the dialog only exists while
+  // createSessionDialogSignal is true, so every open is a fresh mount and
+  // this never goes stale mid-session. A quick-launch action (PrismaticPane's
+  // Deploy/Tests/Handoff buttons today) sets this alongside opening the
+  // dialog; the ordinary "+ New session" button leaves it null.
+  const [prefill] = useState(() => createSessionPrefillSignal.value)
   const [title, setTitle] = useState('')
   const [titleTouched, setTitleTouched] = useState(false)
-  const [groupPath, setGroupPath] = useState('')
+  const [groupPath, setGroupPath] = useState(() => prefill?.groupPath || '')
   const [tool, setTool] = useState('claude')
   const [modelId, setModelId] = useState('')
   const [customModel, setCustomModel] = useState('')
   const [reasoningEffort, setReasoningEffort] = useState('')
-  const [path, setPath] = useState('')
+  const [path, setPath] = useState(() => prefill?.path || '')
   const [pathMenuOpen, setPathMenuOpen] = useState(false)
   const [browserOpen, setBrowserOpen] = useState(false)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
+  // Prefilled sessions come from a quick-launch action that also sets a
+  // group and/or prompt — open Advanced immediately so those prefilled
+  // values (and the prompt sitting right above it) aren't hidden behind a
+  // click the user didn't ask for.
+  const [advancedOpen, setAdvancedOpen] = useState(() => !!(prefill?.groupPath))
   const [worktreeEnabled, setWorktreeEnabled] = useState(false)
   const [branch, setBranch] = useState('')
   const [branchTouched, setBranchTouched] = useState(false)
@@ -349,7 +359,7 @@ export function CreateSessionDialog() {
   const [useTeammateMode, setUseTeammateMode] = useState(() => !!claudeDefaults.useTeammateMode)
   const [useTeammateModeTouched, setUseTeammateModeTouched] = useState(false)
   const [extraArgs, setExtraArgs] = useState('')
-  const [startQuery, setStartQuery] = useState('')
+  const [startQuery, setStartQuery] = useState(() => prefill?.prompt || '')
   const [error, setError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -408,6 +418,7 @@ export function CreateSessionDialog() {
       }
       await apiFetch('POST', '/api/sessions', payload)
       createSessionDialogSignal.value = false
+      createSessionPrefillSignal.value = null
     } catch (err) {
       setError(err.message)
     } finally {
@@ -442,7 +453,10 @@ export function CreateSessionDialog() {
     setAdditionalPaths(prev => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : ['']))
   }
 
-  const close = () => (createSessionDialogSignal.value = false)
+  const close = () => {
+    createSessionDialogSignal.value = false
+    createSessionPrefillSignal.value = null
+  }
   const handleBackdropClick = (e) => { if (e.target === e.currentTarget) close() }
   const modelIDs = modelIDsForTool(tool)
   const reasoningEfforts = reasoningEffortsForTool(tool)
@@ -469,6 +483,13 @@ export function CreateSessionDialog() {
           </button>
         </div>
         <div class="db">
+          ${prefill && html`
+            <div style="font-family: var(--mono); font-size: 11px; color: var(--tn-purple, #bb9af7);
+                        background: rgba(187,154,247,0.08); border: 1px solid rgba(187,154,247,0.3);
+                        border-radius: 4px; padding: 6px 10px;">
+              Prefilled from a Prismatic quick action — review before creating.
+            </div>
+          `}
           <div class="field">
             <label>WORKING DIR</label>
             <div class="combo">

@@ -1064,6 +1064,77 @@ body[data-rail="hidden"] .rightrail { display: none; }
 .gc-foot .cn .d.error   { background: var(--tn-red); }
 .gc-foot .path { margin-left: auto; color: var(--text-dim); }
 
+/* ==================== PRISMATIC PANE ==================== */
+/* PrismaticPane.js — session-scoped, same shape as McpPane/SkillsPane:
+   empty state when no session (or a non-Prismatic one) is selected,
+   otherwise an integration grid + quick-launch actions that prefill
+   CreateSessionDialog rather than a bespoke run view. */
+.pris { flex: 1; min-height: 0; overflow: auto; padding: 18px 18px 60px; display: flex; flex-direction: column; gap: 18px; }
+.pris-head { display: flex; align-items: center; gap: 12px; }
+.pris-head .title { font-size: 16px; font-weight: 700; color: var(--text-hi); }
+.pris-head .sub { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+.pris-empty { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 40px 24px; text-align: center; }
+.pris-empty .t { font-size: 14px; color: var(--text-hi); font-weight: 600; margin-bottom: 6px; }
+.pris-empty .m { font-family: var(--mono); font-size: 11.5px; color: var(--muted); max-width: 440px; margin: 0 auto; }
+
+.pris-section { display: flex; flex-direction: column; gap: 10px; }
+.pris-section-head { display: flex; align-items: center; gap: 10px; }
+.pris-section-head .kicker { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
+.pris-section-head .sub-kicker { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); margin-left: auto; }
+
+.pris-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.pris-chip {
+  display: flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--card); cursor: pointer; color: var(--muted);
+  font-size: 11px; font-weight: 600;
+}
+.pris-chip b { font-family: var(--mono); font-weight: 600; }
+.pris-chip.cni.active       { color: var(--tn-green);  background: rgba(115,218,202,.14); border-color: transparent; }
+.pris-chip.component.active { color: var(--tn-cyan);   background: rgba(125,207,255,.14); border-color: transparent; }
+.pris-chip.shared.active    { color: var(--tn-purple); background: rgba(187,154,247,.14); border-color: transparent; }
+.pris-chip.other.active     { color: var(--text-hi);   background: var(--card-hi);        border-color: transparent; }
+.pris-chip.all.active       { color: var(--text-hi);   background: var(--card-hi);        border-color: transparent; }
+
+.pris-int-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.pris-int-tile {
+  display: grid; grid-template-columns: 44px 1fr auto; gap: 8px; align-items: center;
+  padding: 8px 10px; border-radius: 6px; background: var(--card); border: 1px solid var(--border);
+  font-family: var(--mono); font-size: 11.5px; color: var(--text); cursor: pointer; text-align: left;
+  transition: all 120ms;
+}
+.pris-int-tile:hover { border-color: var(--accent); background: var(--card-hi); }
+.pris-int-tile.on { border-color: var(--tn-purple); background: var(--card-hi); box-shadow: 0 0 0 1px rgba(187,154,247,.3); }
+.pris-int-tile .tyb { font-size: 9px; font-weight: 700; letter-spacing: .03em; padding: 2px 0; border-radius: 4px; text-align: center; }
+.pris-int-tile .tyb.cni       { color: var(--tn-green);  background: rgba(115,218,202,.14); }
+.pris-int-tile .tyb.component { color: var(--tn-cyan);   background: rgba(125,207,255,.14); }
+.pris-int-tile .tyb.shared    { color: var(--tn-purple); background: rgba(187,154,247,.14); }
+.pris-int-tile .tyb.other     { color: var(--muted);     background: rgba(255,255,255,.06); }
+.pris-int-tile .nm { color: var(--text-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pris-int-tile .flows { color: var(--muted-2); font-size: 10px; }
+
+.pris-quick-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.pris-qbtn {
+  display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-radius: 8px;
+  background: var(--card); border: 1px solid var(--border); cursor: pointer; color: var(--text-hi);
+  font-size: 12px; font-weight: 600;
+}
+.pris-qbtn:hover { border-color: var(--accent); background: var(--card-hi); }
+.pris-qbtn .ic {
+  width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent); font-size: 12px; flex: none;
+}
+.pris-env-chip {
+  margin-left: auto; display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 8px;
+  border-radius: 999px; border: 1px solid var(--border-hi); cursor: pointer; background: var(--card);
+}
+.pris-env-chip .d { width: 7px; height: 7px; border-radius: 50%; }
+.pris-env-chip.qa .d   { background: var(--tn-cyan); }
+.pris-env-chip.qa b    { color: var(--tn-cyan); }
+.pris-env-chip.prod .d { background: var(--tn-red); }
+.pris-env-chip.prod b  { color: var(--tn-red); }
+.pris-env-chip b { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; }
+
 /* watchers strip */
 .watcher-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .watcher-tile {

@@ -24,6 +24,7 @@ import { StubPane } from './panes/StubPane.js'
 import { SearchPane } from './panes/SearchPane.js'
 import { McpPane } from './panes/McpPane.js'
 import { SkillsPane } from './panes/SkillsPane.js'
+import { PrismaticPane } from './panes/PrismaticPane.js'
 import { Icon, ICONS } from './icons.js'
 import { menuModelSignal } from './dataModel.js'
 import {
@@ -176,6 +177,7 @@ function Panes({ tab }) {
     ${tab === 'archived'  && html`<${ArchivedPane}/>`}
     ${tab === 'mcp'       && html`<${McpPane}/>`}
     ${tab === 'skills'    && html`<${SkillsPane}/>`}
+    ${tab === 'prismatic' && html`<${PrismaticPane}/>`}
     ${tab === 'conductor' && html`<${StubPane} title="Conductor"
                               message="Conductor orchestration view is TUI-only. The web API does not expose child topology, bridges, or NEED escalation."/>`}
     ${tab === 'watchers'  && html`<${StubPane} title="Watchers"
