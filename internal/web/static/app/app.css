@@ -1144,14 +1144,59 @@ body[data-rail="hidden"] .rightrail { display: none; }
 .pris-cred-row .env.prod { color: var(--tn-red); }
 .pris-cred-row .val { flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pris-cred-row .val.set { color: var(--tn-green); }
-.pris-cred-row .pris-cred-btn {
+/* Base button style — used inside .pris-cred-row/.pris-cred-edit and,
+   since PR3, standalone inside CurlsDialog (Close/Back/Copy/team-picker). */
+.pris-cred-btn {
   font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: 4px;
   border: 1px solid var(--border-hi); background: var(--panel); cursor: pointer; color: var(--text); flex: none;
 }
-.pris-cred-row .pris-cred-btn:hover { border-color: var(--accent); color: var(--accent); }
-.pris-cred-row .pris-cred-btn.danger:hover { border-color: var(--tn-red); color: var(--tn-red); }
+.pris-cred-btn:hover { border-color: var(--accent); color: var(--accent); }
+.pris-cred-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.pris-cred-btn.danger:hover { border-color: var(--tn-red); color: var(--tn-red); }
 .pris-cred-edit { display: flex; gap: 6px; align-items: center; padding: 4px 0; }
 .pris-cred-edit input { flex: 1; min-width: 0; }
+
+/* Source-def curl wizard (PR 3/4) */
+.pris-curls-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 60;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.pris-curls-dialog {
+  width: 100%; max-width: 560px; max-height: 82vh; overflow: auto;
+  background: var(--panel); border: 1px solid var(--border-hi); border-radius: var(--radius-lg);
+  display: flex; flex-direction: column;
+}
+.pris-curls-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 14px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel);
+}
+.pris-curls-head .title { font-size: 13.5px; font-weight: 700; color: var(--text-hi); font-family: var(--mono); }
+.pris-curls-body { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
+.pris-curls-field { display: flex; flex-direction: column; gap: 6px; }
+.pris-curls-field label { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+.pris-curls-field select, .pris-curls-field input[type="text"] {
+  padding: 7px 9px; border-radius: 6px; border: 1px solid var(--border-hi); background: var(--card); color: var(--text);
+  font-family: var(--mono); font-size: 12px;
+}
+.pris-curls-radios { display: flex; gap: 8px; }
+.pris-curls-check { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; color: var(--text); padding: 3px 0; }
+.pris-curls-row { display: flex; gap: 8px; justify-content: flex-end; }
+.pris-curls-reason { font-family: var(--mono); font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+.pris-curls-option {
+  display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 8px 10px; border-radius: 6px;
+  background: var(--card); border: 1px solid var(--border); cursor: pointer; width: 100%;
+}
+.pris-curls-option:hover { border-color: var(--accent); background: var(--card-hi); }
+.pris-curls-option .nm { font-size: 12px; font-weight: 600; color: var(--text-hi); }
+.pris-curls-option .id { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+.pris-curls-step { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.pris-curls-step-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.pris-curls-step-head b { font-size: 12px; color: var(--text-hi); }
+.pris-curls-step-desc { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-bottom: 6px; }
+.pris-curls-code {
+  font-family: var(--mono); font-size: 11px; color: var(--text); white-space: pre-wrap; word-break: break-all;
+  background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 0; max-height: 220px; overflow: auto;
+}
 
 /* watchers strip */
 .watcher-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
