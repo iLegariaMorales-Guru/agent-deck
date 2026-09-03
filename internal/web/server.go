@@ -332,6 +332,9 @@ func NewServer(cfg Config) *Server {
 	// internal/prismatic and handlers_prismatic.go.
 	mux.HandleFunc("GET /api/sessions/{id}/prismatic", s.handleSessionPrismatic)
 
+	// Source-definition curl generator (PR 3/4) — see handlers_prismatic_curls.go.
+	mux.HandleFunc("POST /api/sessions/{id}/prismatic/curls", s.handleSessionPrismaticCurls)
+
 	// Prismatic credentials vault (PR 2/4) — machine-wide, not session-scoped.
 	// See handlers_prismatic_credentials.go.
 	mux.HandleFunc("/api/prismatic/credentials", s.handlePrismaticCredentials)

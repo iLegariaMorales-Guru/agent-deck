@@ -183,6 +183,39 @@ func ClearGuruCreds(env string) error {
 	return saveCredentialsLocked(all)
 }
 
+// GetPrismToken returns env's stored Prism refresh token, or "" if unset.
+// Used server-side only (shelling out to the prism CLI for ipaas ID
+// resolution) — never exposed over the credentials API.
+func GetPrismToken(env string) (string, error) {
+	if !ValidEnvs[env] {
+		return "", fmt.Errorf("unknown environment %q", env)
+	}
+	credentialsMu.Lock()
+	defer credentialsMu.Unlock()
+	creds, err := loadCredentialsLocked()
+	if err != nil {
+		return "", err
+	}
+	return creds.Prism[env], nil
+}
+
+// GetGuruCreds returns env's stored Guru "user:token" credentials, or "" if
+// unset. Used server-side only to embed into generated curl commands — the
+// whole point of the vault (see credentials API's status-only response for
+// the contrasting case where the raw value must never leave the server).
+func GetGuruCreds(env string) (string, error) {
+	if !ValidEnvs[env] {
+		return "", fmt.Errorf("unknown environment %q", env)
+	}
+	credentialsMu.Lock()
+	defer credentialsMu.Unlock()
+	creds, err := loadCredentialsLocked()
+	if err != nil {
+		return "", err
+	}
+	return creds.Guru[env], nil
+}
+
 func hasColon(s string) bool {
 	for _, r := range s {
 		if r == ':' {
