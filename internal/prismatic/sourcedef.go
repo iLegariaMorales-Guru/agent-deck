@@ -97,8 +97,9 @@ type CurlStep struct {
 }
 
 // apiBaseForEnv returns Guru's admin API base for env — same host for both,
-// just a qa/prod subdomain split.
-func apiBaseForEnv(env string) string {
+// just a qa/prod subdomain split. A var (not a plain func) so tests can
+// point it at an httptest server instead of the real qa/prod hosts.
+var apiBaseForEnv = func(env string) string {
 	if env == "prod" {
 		return "https://api.getguru.com"
 	}
