@@ -1174,7 +1174,7 @@ body[data-rail="hidden"] .rightrail { display: none; }
 .pris-curls-body { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
 .pris-curls-field { display: flex; flex-direction: column; gap: 6px; }
 .pris-curls-field label { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
-.pris-curls-field select, .pris-curls-field input[type="text"] {
+.pris-curls-field select, .pris-curls-field input[type="text"], .pris-curls-field input[type="number"] {
   padding: 7px 9px; border-radius: 6px; border: 1px solid var(--border-hi); background: var(--card); color: var(--text);
   font-family: var(--mono); font-size: 12px;
 }
@@ -1197,6 +1197,11 @@ body[data-rail="hidden"] .rightrail { display: none; }
   font-family: var(--mono); font-size: 11px; color: var(--text); white-space: pre-wrap; word-break: break-all;
   background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 0; max-height: 220px; overflow: auto;
 }
+.pris-stuck-row {
+  display: flex; flex-direction: column; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2);
+}
+.pris-stuck-row-head { display: flex; align-items: center; justify-content: space-between; }
+.pris-stuck-row-head b { font-size: 12px; color: var(--text-hi); }
 
 /* watchers strip */
 .watcher-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }

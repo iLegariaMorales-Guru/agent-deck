@@ -335,6 +335,11 @@ func NewServer(cfg Config) *Server {
 	// Source-definition curl generator (PR 3/4) — see handlers_prismatic_curls.go.
 	mux.HandleFunc("POST /api/sessions/{id}/prismatic/curls", s.handleSessionPrismaticCurls)
 
+	// Stuck-sync force-fail curl generator — machine-wide, not session-scoped
+	// (the source/objectType ids are pasted from an rdsql lookup, not derived
+	// from any session's project). See handlers_prismatic_stucksync.go.
+	mux.HandleFunc("POST /api/prismatic/curls/stuck-sync", s.handlePrismaticCurlsStuckSync)
+
 	// Prismatic credentials vault (PR 2/4) — machine-wide, not session-scoped.
 	// See handlers_prismatic_credentials.go.
 	mux.HandleFunc("/api/prismatic/credentials", s.handlePrismaticCredentials)

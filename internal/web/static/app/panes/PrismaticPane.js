@@ -26,6 +26,14 @@ const TEST_TEAMS = [
   { id: '014dc5f6-9488-43fe-a892-206d276a7a9c', name: 'Guru HQ' },
 ]
 
+// Mirrors internal/prismatic/stucksync.go's StuckSyncStatusReasons — the
+// four statusReason values that map to FAILED (resumable by a plain retry).
+const STUCK_SYNC_REASONS = ['JOB_TIMEOUT', 'API_TIMEOUT', 'API_ERROR', 'UNKNOWN_ERROR']
+
+function emptyStuckSyncRow() {
+  return { objectTypeId: '', syncNumber: '', statusReason: STUCK_SYNC_REASONS[2], dependentObjectTypeIds: '', errorDetails: '' }
+}
+
 const TYPE_FILTERS = [
   { id: 'cni', label: 'CNI' },
   { id: 'component', label: 'Components' },
@@ -77,6 +85,7 @@ function PrismaticPaneForSession({ session }) {
   const [env, setEnv] = useState('qa')
   const [credStatus, setCredStatus] = useState(null)
   const [curlsDialogFor, setCurlsDialogFor] = useState(null) // the focused integration, while the wizard is open
+  const [stuckSyncOpen, setStuckSyncOpen] = useState(false)
 
   function refreshCredentials() {
     apiFetch('GET', '/api/prismatic/credentials')
@@ -238,8 +247,24 @@ function PrismaticPaneForSession({ session }) {
         <${CredentialsSection} status=${credStatus} onChange=${refreshCredentials}/>
       </div>
 
+      <div class="pris-section">
+        <div class="pris-section-head">
+          <span class="kicker">Admin tools</span>
+          <span class="sub-kicker">not tied to this integration — pastes ids looked up in rdsql</span>
+        </div>
+        <div class="pris-quick-row">
+          <button class="pris-qbtn" onClick=${() => setStuckSyncOpen(true)}>
+            <span class="ic">⛑</span>Fix stuck sync (force FAILED)
+          </button>
+        </div>
+      </div>
+
       ${curlsDialogFor && html`
         <${CurlsDialog} session=${session} integration=${curlsDialogFor} onClose=${() => setCurlsDialogFor(null)}/>
+      `}
+
+      ${stuckSyncOpen && html`
+        <${StuckSyncDialog} onClose=${() => setStuckSyncOpen(false)}/>
       `}
     </div>
   `
@@ -375,6 +400,169 @@ function CurlsDialog({ session, integration, onClose }) {
             <div class="pris-curls-reason">
               Resolved via ${result.ipaas?.source || '?'} → <b>${result.ipaas?.name}</b> (${result.ipaas?.id})
             </div>
+            ${result.curls.map((step, i) => html`
+              <div key=${i} class="pris-curls-step">
+                <div class="pris-curls-step-head">
+                  <b>${step.label}</b>
+                  <button class="pris-cred-btn" onClick=${() => copy(step.curl)}>Copy</button>
+                </div>
+                <div class="pris-curls-step-desc">${step.description}</div>
+                <pre class="pris-curls-code">${step.curl}</pre>
+              </div>
+            `)}
+            <div class="pris-curls-row">
+              <button class="pris-cred-btn" onClick=${() => setResult(null)}>Start over</button>
+              <button class="pris-qbtn" onClick=${copyAll}>${copiedAll ? 'Copied all' : 'Copy all'}</button>
+            </div>
+          </div>
+        `}
+      </div>
+    </div>
+  `
+}
+
+// StuckSyncDialog is the "force a stuck SYNCING row to FAILED" incident
+// tool: env + sourceId + one-or-more stuck rows -> a PUT curl per row.
+// Not tied to any integration/session — the ids come from an rdsql lookup
+// the operator did beforehand (see internal/prismatic/stucksync.go's doc
+// comment for the queries). Backed by POST /api/prismatic/curls/stuck-sync,
+// which never runs the write itself, same as CurlsDialog.
+function StuckSyncDialog({ onClose }) {
+  const [env, setEnv] = useState('prod')
+  const [sourceId, setSourceId] = useState('')
+  const [rows, setRows] = useState([emptyStuckSyncRow()])
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const [copiedAll, setCopiedAll] = useState(false)
+
+  function updateRow(i, patch) {
+    setRows(rs => rs.map((r, idx) => idx === i ? { ...r, ...patch } : r))
+  }
+
+  function addRow() {
+    setRows(rs => [...rs, emptyStuckSyncRow()])
+  }
+
+  function removeRow(i) {
+    setRows(rs => rs.filter((_, idx) => idx !== i))
+  }
+
+  const canGenerate = sourceId.trim() && rows.every(r => r.objectTypeId.trim() && r.syncNumber !== '' && Number(r.syncNumber) >= 0)
+
+  async function generate() {
+    if (!canGenerate || busy) return
+    setBusy(true)
+    setCopiedAll(false)
+    try {
+      const resp = await apiFetch('POST', '/api/prismatic/curls/stuck-sync', {
+        env,
+        sourceId: sourceId.trim(),
+        rows: rows.map(r => ({
+          objectTypeId: r.objectTypeId.trim(),
+          syncNumber: Number(r.syncNumber),
+          statusReason: r.statusReason,
+          dependentObjectTypeIds: r.dependentObjectTypeIds.split(',').map(s => s.trim()).filter(Boolean),
+          errorDetails: r.errorDetails.trim() || undefined,
+        })),
+      })
+      setResult(resp)
+    } catch (e) {
+      // apiFetch already toasts the error message.
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function copy(text) {
+    try {
+      await navigator.clipboard.writeText(text)
+      addToast('Copied')
+    } catch (e) {
+      addToast('Copy failed — select and copy manually')
+    }
+  }
+
+  async function copyAll() {
+    if (!result?.curls?.length) return
+    await copy(result.curls.map(c => c.curl).join('\n\n'))
+    setCopiedAll(true)
+  }
+
+  return html`
+    <div class="pris-curls-overlay" onClick=${e => { if (e.target === e.currentTarget) onClose() }}>
+      <div class="pris-curls-dialog">
+        <div class="pris-curls-head">
+          <div class="title">Fix stuck sync</div>
+          <button class="pris-cred-btn" onClick=${onClose}>Close</button>
+        </div>
+
+        ${!result && html`
+          <div class="pris-curls-body">
+            <div class="pris-curls-reason">
+              Force one or more rows stuck in SYNCING to FAILED so the next trigger isn't
+              rejected with a 409. Look up the source uuid, object-type ids, and real
+              syncNumber in rdsql first — this only builds the curl(s), it never calls Guru.
+            </div>
+            <div class="pris-curls-field">
+              <label>Environment</label>
+              <div class="pris-curls-radios">
+                ${['qa', 'prod'].map(e => html`
+                  <button key=${e} class=${`pris-cred-btn ${env === e ? 'active' : ''}`} onClick=${() => setEnv(e)}>${e.toUpperCase()}</button>
+                `)}
+              </div>
+            </div>
+            <div class="pris-curls-field">
+              <label>Source ID</label>
+              <input type="text" placeholder="hex from rdsql (no dashes) or already-dashed UUID — auto-normalized"
+                     value=${sourceId} onInput=${e => setSourceId(e.target.value)}/>
+            </div>
+
+            ${rows.map((row, i) => html`
+              <div key=${i} class="pris-stuck-row">
+                <div class="pris-stuck-row-head">
+                  <b>Row ${i + 1}</b>
+                  ${rows.length > 1 && html`<button class="pris-cred-btn danger" onClick=${() => removeRow(i)}>Remove</button>`}
+                </div>
+                <div class="pris-curls-field">
+                  <label>Object type id</label>
+                  <input type="text" placeholder="UUID (hex or dashed) or a PermissionEntityType literal like USER, OBJECT_ACCESS"
+                         value=${row.objectTypeId} onInput=${e => updateRow(i, { objectTypeId: e.target.value })}/>
+                </div>
+                <div class="pris-curls-field">
+                  <label>Sync number</label>
+                  <input type="number" min="0" placeholder="real value from gld_obj_type / gld_obj_tag_config, not source_object_sync"
+                         value=${row.syncNumber} onInput=${e => updateRow(i, { syncNumber: e.target.value })}/>
+                </div>
+                <div class="pris-curls-field">
+                  <label>Status reason</label>
+                  <select value=${row.statusReason} onChange=${e => updateRow(i, { statusReason: e.target.value })}>
+                    ${STUCK_SYNC_REASONS.map(r => html`<option key=${r} value=${r}>${r}</option>`)}
+                  </select>
+                </div>
+                <div class="pris-curls-field">
+                  <label>Dependent object type ids (optional, comma-separated)</label>
+                  <input type="text" placeholder="e.g. OBJECT_ACCESS — leave blank to fail this row alone"
+                         value=${row.dependentObjectTypeIds} onInput=${e => updateRow(i, { dependentObjectTypeIds: e.target.value })}/>
+                </div>
+                <div class="pris-curls-field">
+                  <label>Error details (optional)</label>
+                  <input type="text" placeholder="e.g. worker crashed mid-sync"
+                         value=${row.errorDetails} onInput=${e => updateRow(i, { errorDetails: e.target.value })}/>
+                </div>
+              </div>
+            `)}
+            <div class="pris-curls-row" style="justify-content: flex-start;">
+              <button class="pris-cred-btn" onClick=${addRow}>+ Add another stuck row</button>
+            </div>
+
+            <button class="pris-qbtn" disabled=${busy || !canGenerate} onClick=${generate}>
+              ${busy ? 'Generating…' : 'Generate'}
+            </button>
+          </div>
+        `}
+
+        ${result && html`
+          <div class="pris-curls-body">
             ${result.curls.map((step, i) => html`
               <div key=${i} class="pris-curls-step">
                 <div class="pris-curls-step-head">
