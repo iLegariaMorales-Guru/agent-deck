@@ -31,6 +31,11 @@ type prismaticCurlsRequest struct {
 	Category       string   `json:"category"`
 	TeamIDs        []string `json:"teamIds,omitempty"` // prod only; empty = default team
 	IpaasID        string   `json:"ipaasId,omitempty"` // manual override, skips resolution
+	// Name/IconURL override what was parsed out of createSource.ts / derived
+	// from it — e.g. the source has its name in ALL CAPS and Guru's
+	// convention wants Title Case. Empty means "use the extracted default".
+	Name    string `json:"name,omitempty"`
+	IconURL string `json:"iconUrl,omitempty"`
 }
 
 type prismaticCurlsResponse struct {
@@ -135,7 +140,7 @@ func (s *Server) handleSessionPrismaticCurls(w http.ResponseWriter, r *http.Requ
 		writeAPIError(w, http.StatusInternalServerError, ErrCodeInternalError, "failed to load Guru credentials")
 		return
 	}
-	curls, err := prismatic.BuildCurls(info, req.Env, ipaas.ID, req.Category, credentials, teams)
+	curls, err := prismatic.BuildCurls(info, req.Env, ipaas.ID, req.Category, credentials, teams, req.Name, req.IconURL)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, ErrCodeInternalError, "failed to build curl commands")
 		return
@@ -146,6 +151,64 @@ func (s *Server) handleSessionPrismaticCurls(w http.ResponseWriter, r *http.Requ
 		Ipaas: ipaas,
 		Curls: curls,
 	})
+}
+
+type prismaticUpdateCurlRequest struct {
+	Env        string         `json:"env"`
+	Definition map[string]any `json:"definition"`
+}
+
+type prismaticUpdateCurlResponse struct {
+	Curls []prismatic.CurlStep `json:"curls"`
+}
+
+// handlePrismaticCurlsUpdate serves POST /api/prismatic/curls/update — the
+// "edit an existing source definition" counterpart to
+// handleSessionPrismaticCurls's create flow. Not session-scoped: the
+// caller already fetched+edited the definition via
+// POST /api/sessions/{id}/prismatic/existing, so everything needed (the
+// type, the edited fields) travels in the request body.
+func (s *Server) handlePrismaticCurlsUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeAPIError(w, http.StatusMethodNotAllowed, ErrCodeMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !s.authorizeRequest(r) {
+		writeAPIError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "unauthorized")
+		return
+	}
+	if !s.checkMutationsAllowed(w) {
+		return
+	}
+	if !s.checkMutationRateLimit(w) {
+		return
+	}
+
+	var req prismaticUpdateCurlRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, ErrCodeBadRequest, "invalid request body")
+		return
+	}
+	if !prismatic.ValidEnvs[req.Env] {
+		writeAPIError(w, http.StatusBadRequest, ErrCodeBadRequest, `env must be "qa" or "prod"`)
+		return
+	}
+	if len(req.Definition) == 0 {
+		writeAPIError(w, http.StatusBadRequest, ErrCodeBadRequest, "definition is required")
+		return
+	}
+
+	credentials, err := prismatic.GetGuruCreds(req.Env)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, ErrCodeInternalError, "failed to load Guru credentials")
+		return
+	}
+	curl, err := prismatic.BuildUpdateCurl(req.Definition, req.Env, credentials)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, ErrCodeBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, prismaticUpdateCurlResponse{Curls: []prismatic.CurlStep{curl}})
 }
 
 func dirIsAmongIntegrations(integrations []prismatic.Integration, dir string) bool {

@@ -21,6 +21,10 @@ const (
 	// ErrCodeConflict is returned by POST /api/fs/mkdir when a folder with
 	// the requested name already exists at that location.
 	ErrCodeConflict = "CONFLICT"
+	// ErrCodeUpstreamError is returned by POST /api/sessions/{id}/prismatic/existing
+	// when the call to Guru's admin API itself fails (anything other than a
+	// 404, which just means "not registered yet" and isn't an error).
+	ErrCodeUpstreamError = "UPSTREAM_ERROR"
 )
 
 // CreateSessionRequest is the body for POST /api/sessions. Fields below

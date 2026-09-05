@@ -82,7 +82,7 @@ func TestExtractSourceDefInfo_MissingRequiredFieldReturnsError(t *testing.T) {
 
 func TestBuildCurls_QAProducesOneGeneralCreateCurl(t *testing.T) {
 	info := SourceDefInfo{SourceDefinitionType: "jira-cloud", SourceName: "Jira Cloud", NativePermission: true}
-	steps, err := BuildCurls(info, "qa", "ipaas-123", "Ticketing/Project Management", "qauser:qatoken", nil)
+	steps, err := BuildCurls(info, "qa", "ipaas-123", "Ticketing/Project Management", "qauser:qatoken", nil, "", "")
 	if err != nil {
 		t.Fatalf("BuildCurls: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestBuildCurls_QAProducesOneGeneralCreateCurl(t *testing.T) {
 
 func TestBuildCurls_ProdProducesFourStepDanceWithDefaultTeam(t *testing.T) {
 	info := SourceDefInfo{SourceDefinitionType: "jira-cloud", SourceName: "Jira Cloud"}
-	steps, err := BuildCurls(info, "prod", "ipaas-456", "Ticketing/Project Management", "", nil)
+	steps, err := BuildCurls(info, "prod", "ipaas-456", "Ticketing/Project Management", "", nil, "", "")
 	if err != nil {
 		t.Fatalf("BuildCurls: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestBuildCurls_ProdWithMultipleTeamsGeneratesOneAssignRemovePerTeam(t *test
 		{ID: "team-a", Name: "Team A"},
 		{ID: "team-b", Name: "Team B"},
 	}
-	steps, err := BuildCurls(info, "prod", "ipaas-789", "CRM", "u:t", teams)
+	steps, err := BuildCurls(info, "prod", "ipaas-789", "CRM", "u:t", teams, "", "")
 	if err != nil {
 		t.Fatalf("BuildCurls: %v", err)
 	}
@@ -150,6 +150,35 @@ func TestBuildCurls_ProdWithMultipleTeamsGeneratesOneAssignRemovePerTeam(t *test
 	}
 	if !strings.Contains(steps[3].Curl, "team-a") || !strings.Contains(steps[4].Curl, "team-b") {
 		t.Errorf("expected both team remove curls in order, got: %v", labels(steps))
+	}
+}
+
+func TestBuildCurls_NameOverrideAlsoDerivesDefaultIconURL(t *testing.T) {
+	info := SourceDefInfo{SourceDefinitionType: "jira-cloud", SourceName: "JIRA ISSUES ALL CAPS"}
+	steps, err := BuildCurls(info, "qa", "ipaas-1", "CRM", "", nil, "Jira Issues", "")
+	if err != nil {
+		t.Fatalf("BuildCurls: %v", err)
+	}
+	curl := steps[0].Curl
+	if !strings.Contains(curl, `"name": "Jira Issues"`) {
+		t.Errorf("curl should use the overridden name, got: %s", curl)
+	}
+	if strings.Contains(curl, "JIRA ISSUES ALL CAPS") {
+		t.Errorf("curl should not contain the un-overridden extracted name, got: %s", curl)
+	}
+	if !strings.Contains(curl, "source-icons/jira_issues.png") {
+		t.Errorf("icon URL should be derived from the overridden name, got: %s", curl)
+	}
+}
+
+func TestBuildCurls_IconURLOverrideWins(t *testing.T) {
+	info := SourceDefInfo{SourceDefinitionType: "jira-cloud", SourceName: "Jira Issues"}
+	steps, err := BuildCurls(info, "qa", "ipaas-1", "CRM", "", nil, "", "https://example.com/custom-icon.png")
+	if err != nil {
+		t.Fatalf("BuildCurls: %v", err)
+	}
+	if !strings.Contains(steps[0].Curl, `"iconUrl": "https://example.com/custom-icon.png"`) {
+		t.Errorf("curl should use the overridden icon URL, got: %s", steps[0].Curl)
 	}
 }
 
